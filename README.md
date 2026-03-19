@@ -1,25 +1,24 @@
-# Web-Oriented System for Visual Modeling of Dynamic Systems (NIR Prototype)
+# НИР: веб-прототип визуального моделирования динамических систем
 
-## Project Purpose
-This repository contains a research-grade prototype for an undergraduate research project (НИР) on browser-based visual modeling of dynamic systems.
+Репозиторий содержит учебно-исследовательский прототип, который закрывает полный цикл:
 
-The prototype implements a complete vertical slice:
+`схема -> валидация -> компиляция -> моделирование -> визуализация`
 
-`diagram -> validation -> mathematical compilation -> simulation -> chart`
+Основной фокус проекта:
+- математическая корректность расчётов;
+- прозрачная внутренняя архитектура;
+- валидация схем с понятными ошибками;
+- воспроизводимые автотесты.
 
-Focus areas:
-- mathematical correctness
-- transparent internal architecture
-- validation and error reporting
-- reproducible automated testing
+## Что обновлено в текущей версии
+- Интерфейс рабочего поля обновлён: добавление блоков кликом и drag-and-drop, удаление выбранного блока клавишей `Delete`.
+- Параметры блока редактируются в модальном окне (двойной клик по блоку или кнопка `Параметры`).
+- Панель осциллографа расширена: вкладки `График / Сигналы / Метаданные`, полноэкранный режим графика, вертикальный ресайз панели.
+- В тулбаре доступны настройки моделирования: `solver`, `t_end`, `dt`.
+- В ответе `/simulate` возвращаются метаданные расчёта (`requested_solver`, `used_solver`, `state_dimension`, `block_count`, `scope_count`).
+- Есть E2E-тесты на Playwright для пользовательского сценария моделирования и обработки ошибок.
 
-## NIR Rationale
-- This prototype is intended to verify the feasibility of browser-based visual modeling of dynamic systems.
-- The emphasis is correctness, verification, and mathematical traceability.
-- The interface is intentionally minimal and not design-driven.
-- The result is a base that can be expanded into a full diploma project.
-
-## Monorepo Structure
+## Структура монорепозитория
 ```text
 .
 ├── backend/
@@ -43,7 +42,7 @@ Focus areas:
 └── examples/
 ```
 
-## Supported Blocks
+## Поддерживаемые блоки
 - `StepInput`
 - `Gain`
 - `Sum`
@@ -52,112 +51,118 @@ Focus areas:
 - `SecondOrderOscillator`
 - `Scope`
 
-Each block contains:
+Каждый блок в диаграмме содержит:
 - `id`
 - `type`
 - `parameters`
 - `input_ports`
 - `output_ports`
 
-Connections are directed links from output ports to input ports.
+Связи (`connections`) задаются направленно: от `from_block/from_port` к `to_block/to_port`.
 
-## Mathematical Assumptions and Equations
-Implemented in `backend/app/simulation/blocks.py`.
+## Математическая модель (backend/app/simulation/blocks.py)
+- `Gain`: `y = k * x`
+- `Sum`: знаковая сумма входов
+- `StepInput`: `u(t) = A`, если `t >= t0`, иначе `0`
+- `Integrator`: `dy/dt = k * x`
+- `FirstOrderLag`: `dy/dt = (k*x - y)/T`
+- `SecondOrderOscillator`:
+  - `dy/dt = y_dot`
+  - `dy_dot/dt = k*wn^2*x - 2*zeta*wn*y_dot - wn^2*y`
 
-- Gain: `y = k * x`
-- Sum: `y = signed_sum(inputs)`
-- StepInput: `u(t) = A for t >= t0, else 0`
-- Integrator: `dy/dt = k * x`, state variable `y`
-- FirstOrderLag:
-  - original: `T * dy/dt + y = k * x`
-  - ODE form: `dy/dt = (k*x - y)/T`
-- SecondOrderOscillator:
-  - original: `d2y/dt2 + 2*zeta*wn*dy/dt + wn^2*y = k*wn^2*x`
-  - first-order form with states `(y, y_dot)`:
-    - `dy/dt = y_dot`
-    - `dy_dot/dt = k*wn^2*x - 2*zeta*wn*y_dot - wn^2*y`
+Решатели:
+- `rk4` (кастомный фиксированный шаг);
+- `solve_ivp` (SciPy, RK45).
 
-## Validation Logic
-Implemented in `backend/app/validation/validator.py`.
+## Валидация схем (backend/app/validation/validator.py)
+Проверяется:
+- корректность типов блоков;
+- корректность параметров блоков (числовые ограничения и формат);
+- соответствие входных/выходных портов типу блока;
+- валидность ссылок в связях;
+- отсутствие нескольких входящих связей в один входной порт;
+- подключение всех обязательных входов;
+- отсутствие алгебраических петель без динамических блоков.
 
-Rules:
-- unknown block types are rejected
-- block parameters are validated (numeric, positivity constraints, etc.)
-- declared ports must match block type expectations
-- invalid connection references are rejected
-- one input port cannot receive multiple incoming connections
-- all required input ports must be connected
-- algebraic loops are detected and rejected when loop contains no dynamic block
+## API
+- `GET /health` -> проверка состояния сервиса.
+- `POST /validate` -> валидация диаграммы.
+- `POST /simulate` -> расчёт и выдача временных рядов.
 
-Validation endpoint: `POST /validate`
+Пример минимального запроса на моделирование:
+```json
+{
+  "diagram": {
+    "blocks": [],
+    "connections": []
+  },
+  "t_start": 0.0,
+  "t_end": 6.0,
+  "dt": 0.01,
+  "solver": "solve_ivp"
+}
+```
 
-## Compilation and Simulation Pipeline
-Implemented mainly in:
-- `backend/app/simulation/compiler.py`
-- `backend/app/simulation/solvers.py`
-- `backend/app/simulation/service.py`
-
-Pipeline:
-1. validate diagram
-2. compile to internal representation
-3. allocate dynamic states and initial state vector
-4. construct `f(t, x)` for ODE right-hand side
-5. evaluate scope outputs from compiled signal graph
-6. simulate with selected solver
-
-Solvers:
-- custom fixed-step RK4
-- `scipy.integrate.solve_ivp` (reference/trusted baseline)
-
-Simulation endpoint: `POST /simulate`
-
-Health endpoint: `GET /health`
-
-## Frontend
-Frontend stack:
-- React + TypeScript + Vite
-- React Flow for block-diagram editing
-- react-plotly.js + plotly.js for plotting
-
-Implemented UI features:
-- block palette with click and drag/drop creation
-- node connection via React Flow handles
-- parameter editor for selected node
-- example loading
-- validate and simulate actions
-- chart rendering for scope outputs
-- error panel for validation/simulation failures
-
-## Example Diagrams
-Located in `examples/`:
+## Примеры схем
+Файлы в каталоге `examples/`:
 - `gain_only.json`
 - `integrator_step.json`
 - `first_order_lag_step.json`
 - `second_order_oscillator_step.json`
 - `closed_loop_negative_feedback.json`
 
-## Running the Project
+## Запуск проекта
 
-### Backend
+### Требования
+- Python `>= 3.12`
+- Node.js `>= 18`
+- npm
+
+### Backend (FastAPI)
 ```bash
 cd backend
 python -m venv .venv
-. .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Windows (PowerShell):
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Linux/macOS:
+```bash
+source .venv/bin/activate
+```
+
+Установка зависимостей и запуск:
+```bash
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+### Frontend (React + Vite)
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-By default frontend targets `http://localhost:8000`.
-You can override via `VITE_API_BASE_URL`.
+По умолчанию frontend обращается к `http://localhost:8000`.
+При необходимости переопределите URL API через `VITE_API_BASE_URL`.
 
-## Automated Tests
+## Важно: проблема запуска с `unicorne` / `gunicorn`
+Если backend не запускался с `unicorne`, это ожидаемо:
+- корректное имя сервера: `uvicorn` (а не `unicorne`);
+- `gunicorn` обычно не используется на Windows (часто не запускается в локальной среде Windows);
+- надёжный кроссплатформенный вариант для dev:  
+  `python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
+
+Если команда `uvicorn` не найдена:
+- убедитесь, что активировано виртуальное окружение;
+- запускайте именно через `python -m uvicorn ...` (это обходит проблемы с PATH).
+
+## Автотесты
 
 ### Backend (pytest)
 ```bash
@@ -165,11 +170,11 @@ cd backend
 python -m pytest
 ```
 
-Coverage groups:
-- unit tests for block equations
-- diagram validation tests
-- numerical tests against analytical/reference behavior
-- API tests for `/validate` and `/simulate`
+Покрытие включает:
+- unit-тесты уравнений блоков;
+- тесты валидации схем;
+- численные тесты против аналитических/референсных зависимостей;
+- API-тесты `/validate` и `/simulate`.
 
 ### Frontend E2E (Playwright)
 ```bash
@@ -177,32 +182,22 @@ cd frontend
 npm run test:e2e
 ```
 
-E2E checks:
-- app opens
-- example/diagram flow runs
-- simulation action renders plot
-- invalid diagram shows validation errors
+Если Playwright запускается впервые:
+```bash
+npx playwright install
+```
 
-## Known Limitations
-- no authentication or user management
-- no database or persistent diagram storage
-- no collaborative editing
-- no advanced numerical stiffness handling or event handling
-- algebraic loop handling is reject-only (no DAE solver)
-- UI is intentionally minimal
+## Ограничения прототипа
+- нет авторизации и управления пользователями;
+- нет БД и персистентного хранения схем;
+- нет совместного редактирования;
+- нет продвинутой обработки жёстких систем и событий;
+- алгебраические петли только отклоняются (DAE-решатель не реализован).
 
-## Possible Diploma-Stage Extensions
-- richer block library (transfer functions, nonlinear blocks, saturation, PID)
-- subsystem hierarchies and reusable components
-- robust persistence and project management
-- comparative solver analysis and error estimators
-- parameter sweeps and automated experiments
-- report export (plots, metrics, model metadata)
-
-## Brief Design Decisions
-- Port declarations are explicit in the JSON model to make graph semantics visible.
-- Validation is separated from compilation to keep failure modes clear.
-- Block equations are isolated into small pure functions for direct unit testing.
-- `solve_ivp` is treated as trusted baseline, while custom RK4 remains inspectable and comparable.
-- Frontend keeps a direct schema-compatible diagram representation for transparent API exchange.
-
+## Потенциальные расширения (этап диплома)
+- расширение библиотеки блоков (PID, нелинейности, насыщение и т.д.);
+- иерархия подсистем и переиспользуемые компоненты;
+- сохранение проектов и управление версиями моделей;
+- сравнительный анализ решателей и оценка ошибок;
+- параметрические прогоны и пакетные эксперименты;
+- экспорт отчётов (графики, метрики, метаданные модели).
