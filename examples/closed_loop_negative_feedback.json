@@ -1,0 +1,47 @@
+{
+  "blocks": [
+    {
+      "id": "step1",
+      "type": "StepInput",
+      "parameters": { "amplitude": 1.0, "t0": 0.0 },
+      "input_ports": [],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "sum1",
+      "type": "Sum",
+      "parameters": { "signs": ["+", "-"] },
+      "input_ports": ["in1", "in2"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "lag1",
+      "type": "FirstOrderLag",
+      "parameters": { "k": 1.0, "T": 0.8, "y0": 0.0 },
+      "input_ports": ["in"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "fb1",
+      "type": "Gain",
+      "parameters": { "k": 1.0 },
+      "input_ports": ["in"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "scope1",
+      "type": "Scope",
+      "parameters": { "label": "y" },
+      "input_ports": ["in"],
+      "output_ports": []
+    }
+  ],
+  "connections": [
+    { "from_block": "step1", "from_port": "out", "to_block": "sum1", "to_port": "in1" },
+    { "from_block": "sum1", "from_port": "out", "to_block": "lag1", "to_port": "in" },
+    { "from_block": "lag1", "from_port": "out", "to_block": "fb1", "to_port": "in" },
+    { "from_block": "fb1", "from_port": "out", "to_block": "sum1", "to_port": "in2" },
+    { "from_block": "lag1", "from_port": "out", "to_block": "scope1", "to_port": "in" }
+  ]
+}
+

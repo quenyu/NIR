@@ -1,0 +1,30 @@
+{
+  "blocks": [
+    {
+      "id": "step1",
+      "type": "StepInput",
+      "parameters": { "amplitude": 1.0, "t0": 0.0 },
+      "input_ports": [],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "gain1",
+      "type": "Gain",
+      "parameters": { "k": 2.0 },
+      "input_ports": ["in"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "scope1",
+      "type": "Scope",
+      "parameters": { "label": "y" },
+      "input_ports": ["in"],
+      "output_ports": []
+    }
+  ],
+  "connections": [
+    { "from_block": "step1", "from_port": "out", "to_block": "gain1", "to_port": "in" },
+    { "from_block": "gain1", "from_port": "out", "to_block": "scope1", "to_port": "in" }
+  ]
+}
+

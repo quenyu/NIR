@@ -1,0 +1,30 @@
+{
+  "blocks": [
+    {
+      "id": "step1",
+      "type": "StepInput",
+      "parameters": { "amplitude": 1.0, "t0": 0.0 },
+      "input_ports": [],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "osc1",
+      "type": "SecondOrderOscillator",
+      "parameters": { "k": 1.5, "wn": 3.0, "zeta": 0.2, "y0": 0.0, "v0": 0.0 },
+      "input_ports": ["in"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "scope1",
+      "type": "Scope",
+      "parameters": { "label": "y" },
+      "input_ports": ["in"],
+      "output_ports": []
+    }
+  ],
+  "connections": [
+    { "from_block": "step1", "from_port": "out", "to_block": "osc1", "to_port": "in" },
+    { "from_block": "osc1", "from_port": "out", "to_block": "scope1", "to_port": "in" }
+  ]
+}
+

@@ -1,0 +1,2 @@
+"""Diagram validation routines."""
+
