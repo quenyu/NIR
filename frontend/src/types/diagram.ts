@@ -5,6 +5,7 @@ export type BlockType =
   | "Integrator"
   | "FirstOrderLag"
   | "SecondOrderOscillator"
+  | "TransferFunction"
   | "Scope";
 
 export const BLOCK_TYPES: BlockType[] = [
@@ -14,6 +15,7 @@ export const BLOCK_TYPES: BlockType[] = [
   "Integrator",
   "FirstOrderLag",
   "SecondOrderOscillator",
+  "TransferFunction",
   "Scope"
 ];
 
@@ -24,6 +26,7 @@ export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
   Integrator: "Интегратор",
   FirstOrderLag: "Звено 1-го порядка",
   SecondOrderOscillator: "Звено 2-го порядка",
+  TransferFunction: "TransferFunction",
   Scope: "Осциллограф"
 };
 
@@ -66,6 +69,7 @@ const DEFAULT_PARAMETERS: Record<BlockType, Record<string, unknown>> = {
   Integrator: { k: 1, y0: 0 },
   FirstOrderLag: { k: 1, T: 1, y0: 0 },
   SecondOrderOscillator: { k: 1, wn: 1, zeta: 0.2, y0: 0, v0: 0 },
+  TransferFunction: { numerator: [1], denominator: [1, 1] },
   Scope: { label: "" }
 };
 

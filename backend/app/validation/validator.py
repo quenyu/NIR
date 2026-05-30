@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 from app.core.block_specs import (
-    DYNAMIC_BLOCK_TYPES,
     KNOWN_BLOCK_TYPES,
     expected_input_ports,
     expected_output_ports,
+    has_direct_feedthrough,
     validate_parameters,
 )
 from app.models.diagram import Block, Diagram
@@ -137,7 +137,7 @@ def validate_diagram(diagram: Diagram) -> list[str]:
         block.id
         for block in diagram.blocks
         if block.type in KNOWN_BLOCK_TYPES
-        and block.type not in DYNAMIC_BLOCK_TYPES
+        and has_direct_feedthrough(block.type, block.parameters)
         and expected_output_ports(block.type, block.parameters)
     }
 

@@ -7,7 +7,7 @@ interface SimulationChartProps {
   result: SimulationResponse | null;
 }
 
-type ScopeTab = "plot" | "signals" | "meta";
+type ScopeTab = "plot" | "signals" | "analysis" | "meta";
 
 interface SignalStatsRow {
   name: string;
@@ -30,6 +30,22 @@ function computeSignalStats(result: SimulationResponse): SignalStatsRow[] {
     const final = values.length > 0 ? values[values.length - 1] : NaN;
     return { name, min, max, final };
   });
+}
+
+function formatOptionalNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+  return value.toFixed(4);
+}
+
+function formatPole(pole: { real: number; imag: number }): string {
+  const real = pole.real.toFixed(4);
+  const imagAbs = Math.abs(pole.imag).toFixed(4);
+  if (Math.abs(pole.imag) < 1e-12) {
+    return real;
+  }
+  return `${real} ${pole.imag >= 0 ? "+" : "-"} ${imagAbs}i`;
 }
 
 export function SimulationChart({ result }: SimulationChartProps) {
@@ -131,6 +147,77 @@ export function SimulationChart({ result }: SimulationChartProps) {
     );
   }
 
+  function renderAnalysisTab() {
+    if (!result || !result.success) {
+      return <p>Analysis is not available until simulation completes.</p>;
+    }
+
+    const stabilityItems = result.stability_analysis?.transfer_functions ?? [];
+    const qualityEntries = Object.entries(result.quality_metrics ?? {});
+
+    return (
+      <div className="scope-analysis">
+        <h3>Stability</h3>
+        {stabilityItems.length === 0 ? (
+          <p>No TransferFunction blocks in the diagram.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Block</th>
+                <th>Status</th>
+                <th>Poles</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stabilityItems.map((item) => (
+                <tr key={item.block_id}>
+                  <td>{item.block_id}</td>
+                  <td>{item.status}</td>
+                  <td>{item.poles.map(formatPole).join(", ") || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <h3>Quality</h3>
+        {qualityEntries.length === 0 ? (
+          <p>No Scope outputs were calculated.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Signal</th>
+                <th>Final</th>
+                <th>Max</th>
+                <th>Overshoot, %</th>
+                <th>Settling, s</th>
+                <th>Rise, s</th>
+                <th>IAE</th>
+                <th>ISE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {qualityEntries.map(([label, metrics]) => (
+                <tr key={label}>
+                  <td>{label}</td>
+                  <td>{formatOptionalNumber(metrics.final_value)}</td>
+                  <td>{formatOptionalNumber(metrics.max_value)}</td>
+                  <td>{formatOptionalNumber(metrics.overshoot_percent)}</td>
+                  <td>{formatOptionalNumber(metrics.settling_time)}</td>
+                  <td>{formatOptionalNumber(metrics.rise_time)}</td>
+                  <td>{formatOptionalNumber(metrics.integral_absolute_error)}</td>
+                  <td>{formatOptionalNumber(metrics.integral_squared_error)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    );
+  }
+
   function renderMetaTab() {
     if (!result || !result.success) {
       return <p>Метаданные моделирования пока недоступны.</p>;
@@ -174,6 +261,13 @@ export function SimulationChart({ result }: SimulationChartProps) {
               </button>
               <button
                 type="button"
+                className={`btn btn-tab ${activeTab === "analysis" ? "active" : ""}`}
+                onClick={() => setActiveTab("analysis")}
+              >
+                Analysis
+              </button>
+              <button
+                type="button"
                 className={`btn btn-tab ${activeTab === "meta" ? "active" : ""}`}
                 onClick={() => setActiveTab("meta")}
               >
@@ -196,6 +290,7 @@ export function SimulationChart({ result }: SimulationChartProps) {
         <div className="scope-content">
           {activeTab === "plot" && renderPlotTab()}
           {activeTab === "signals" && renderSignalsTab()}
+          {activeTab === "analysis" && renderAnalysisTab()}
           {activeTab === "meta" && renderMetaTab()}
         </div>
       </section>

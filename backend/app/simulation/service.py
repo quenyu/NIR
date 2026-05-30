@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from app.analysis.quality import compute_quality_metrics
+from app.analysis.stability import analyze_transfer_function_stability
 from app.models.api import SimulationRequest, SimulationResponse
 from app.simulation.compiler import compile_diagram
 from app.simulation.solvers import rk4_integrate, solve_ivp_integrate
@@ -57,6 +59,8 @@ def simulate_request(request: SimulationRequest) -> SimulationResponse:
         time=[float(value) for value in t_eval],
         outputs=outputs,
         metadata=metadata,
+        stability_analysis=analyze_transfer_function_stability(request.diagram),
+        quality_metrics=compute_quality_metrics(t_eval, outputs),
+        warnings=[],
         validation_errors=[],
     )
-

@@ -4,10 +4,18 @@ from dataclasses import dataclass
 
 import numpy as np
 
+try:
+    from scipy.signal import tf2ss as scipy_tf2ss
+except ImportError:  # pragma: no cover - scipy is a project dependency.
+    scipy_tf2ss = None
+
 from app.core.block_specs import (
     DYNAMIC_BLOCK_TYPES,
     get_numeric_parameter,
+    get_transfer_function_coefficients,
     get_signs,
+    has_direct_feedthrough,
+    is_dynamic_block,
 )
 from app.models.diagram import Block, Diagram
 from app.simulation.blocks import (
@@ -35,6 +43,22 @@ class ScopeBinding:
     source_port: str
 
 
+@dataclass(frozen=True)
+class TransferFunctionModel:
+    is_dynamic: bool
+    has_direct_feedthrough: bool
+    a: np.ndarray
+    b: np.ndarray
+    c: np.ndarray
+    d: float
+
+    def output(self, state: np.ndarray, input_value: float) -> float:
+        return float(self.c @ state + self.d * input_value)
+
+    def derivative(self, state: np.ndarray, input_value: float) -> np.ndarray:
+        return self.a @ state + self.b * input_value
+
+
 @dataclass
 class CompiledDiagram:
     diagram: Diagram
@@ -42,6 +66,7 @@ class CompiledDiagram:
     incoming: dict[tuple[str, str], tuple[str, str]]
     static_order: list[str]
     dynamic_state_slices: dict[str, slice]
+    transfer_functions: dict[str, TransferFunctionModel]
     initial_state: np.ndarray
     scopes: list[ScopeBinding]
 
@@ -77,6 +102,12 @@ class CompiledDiagram:
             elif block.type == "SecondOrderOscillator":
                 state_slice = self.dynamic_state_slices[block.id]
                 outputs[(block.id, "out")] = float(x[state_slice.start])
+            elif block.type == "TransferFunction":
+                model = self.transfer_functions[block.id]
+                if model.is_dynamic and not model.has_direct_feedthrough:
+                    state_slice = self.dynamic_state_slices[block.id]
+                    state = x[state_slice]
+                    outputs[(block.id, "out")] = model.output(state, 0.0)
 
         for block_id in self.static_order:
             block = self.blocks_by_id[block_id]
@@ -89,6 +120,15 @@ class CompiledDiagram:
                 ports = [f"in{i + 1}" for i in range(len(signs))]
                 values = [self._input_value(block.id, port, outputs) for port in ports]
                 outputs[(block.id, "out")] = sum_output(values, signs)
+            elif block.type == "TransferFunction":
+                model = self.transfer_functions[block.id]
+                x_in = self._input_value(block.id, "in", outputs)
+                if model.is_dynamic:
+                    state_slice = self.dynamic_state_slices[block.id]
+                    state = x[state_slice]
+                else:
+                    state = np.zeros(0, dtype=float)
+                outputs[(block.id, "out")] = model.output(state, x_in)
 
         return outputs
 
@@ -103,7 +143,9 @@ class CompiledDiagram:
             if block.type not in DYNAMIC_BLOCK_TYPES:
                 continue
 
-            state_slice = self.dynamic_state_slices[block.id]
+            state_slice = self.dynamic_state_slices.get(block.id)
+            if state_slice is None:
+                continue
             x_in = self._input_value(block.id, "in", outputs)
 
             if block.type == "Integrator":
@@ -128,6 +170,11 @@ class CompiledDiagram:
                 derivatives[state_slice.start] = dy
                 derivatives[state_slice.start + 1] = ddy
 
+            elif block.type == "TransferFunction":
+                model = self.transfer_functions[block.id]
+                state = x[state_slice]
+                derivatives[state_slice] = model.derivative(state, x_in)
+
         return derivatives
 
     def evaluate_scopes(self, t: float, x: np.ndarray) -> dict[str, float]:
@@ -137,6 +184,101 @@ class CompiledDiagram:
             value = outputs[(scope.source_block, scope.source_port)]
             scope_values[scope.label] = float(value)
         return scope_values
+
+
+def _trim_leading_zeros(coefficients: list[float]) -> list[float]:
+    for index, coefficient in enumerate(coefficients):
+        if coefficient != 0.0:
+            return coefficients[index:]
+    return [0.0]
+
+
+def _manual_tf2ss(
+    numerator: list[float],
+    denominator: list[float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    n = len(denominator) - 1
+    denominator_scale = denominator[0]
+    den = np.array([value / denominator_scale for value in denominator], dtype=float)
+    num = np.array(
+        [value / denominator_scale for value in _trim_leading_zeros(numerator)],
+        dtype=float,
+    )
+    if num.size < n + 1:
+        num = np.pad(num, (n + 1 - num.size, 0), mode="constant")
+    elif num.size > n + 1:
+        num = num[-(n + 1) :]
+
+    a_coefficients = den[1:]
+    d = float(num[0])
+
+    a = np.zeros((n, n), dtype=float)
+    a[0, :] = -a_coefficients
+    if n > 1:
+        a[1:, :-1] = np.eye(n - 1)
+
+    b = np.zeros(n, dtype=float)
+    b[0] = 1.0
+
+    c = num[1:] - d * a_coefficients
+    return a, b, c.astype(float), d
+
+
+def _tf2ss(
+    numerator: list[float],
+    denominator: list[float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    if scipy_tf2ss is None:
+        return _manual_tf2ss(numerator, denominator)
+
+    a, b, c, d = scipy_tf2ss(_trim_leading_zeros(numerator), denominator)
+    return (
+        np.asarray(a, dtype=float),
+        np.asarray(b, dtype=float).reshape(-1),
+        np.asarray(c, dtype=float).reshape(-1),
+        float(np.asarray(d, dtype=float).reshape(-1)[0]),
+    )
+
+
+def _static_transfer_function_gain(numerator: list[float], denominator: list[float]) -> float:
+    numerator_constant = _trim_leading_zeros(numerator)[-1]
+    return float(numerator_constant / denominator[-1])
+
+
+def _build_transfer_function_models(diagram: Diagram) -> dict[str, TransferFunctionModel]:
+    models: dict[str, TransferFunctionModel] = {}
+
+    for block in diagram.blocks:
+        if block.type != "TransferFunction":
+            continue
+
+        numerator, denominator = get_transfer_function_coefficients(block.parameters)
+        denominator_order = len(denominator) - 1
+        direct = has_direct_feedthrough(block.type, block.parameters)
+
+        if denominator_order == 0:
+            gain = _static_transfer_function_gain(numerator, denominator)
+            models[block.id] = TransferFunctionModel(
+                is_dynamic=False,
+                has_direct_feedthrough=True,
+                a=np.zeros((0, 0), dtype=float),
+                b=np.zeros(0, dtype=float),
+                c=np.zeros(0, dtype=float),
+                d=gain,
+            )
+            continue
+
+        a, b, c, d = _tf2ss(numerator, denominator)
+        models[block.id] = TransferFunctionModel(
+            is_dynamic=True,
+            has_direct_feedthrough=direct,
+            a=a,
+            b=b,
+            c=c,
+            d=d,
+        )
+
+    return models
 
 
 def _build_incoming_map(diagram: Diagram) -> dict[tuple[str, str], tuple[str, str]]:
@@ -150,7 +292,12 @@ def _build_incoming_map(diagram: Diagram) -> dict[tuple[str, str], tuple[str, st
 
 
 def _build_static_order(diagram: Diagram) -> list[str]:
-    static_nodes = [block.id for block in diagram.blocks if block.type in {"Gain", "Sum"}]
+    static_nodes = [
+        block.id
+        for block in diagram.blocks
+        if has_direct_feedthrough(block.type, block.parameters)
+        and block.output_ports
+    ]
     static_edges: list[tuple[str, str]] = []
     for connection in diagram.connections:
         static_edges.append((connection.from_block, connection.to_block))
@@ -180,6 +327,15 @@ def _build_dynamic_state(diagram: Diagram) -> tuple[dict[str, slice], np.ndarray
             v0 = get_numeric_parameter(block.parameters, "v0", 0.0)
             initial_values.extend([y0, v0])
             dynamic_state_slices[block.id] = slice(start, start + 2)
+
+        elif block.type == "TransferFunction" and is_dynamic_block(
+            block.type, block.parameters
+        ):
+            _, denominator = get_transfer_function_coefficients(block.parameters)
+            order = len(denominator) - 1
+            start = len(initial_values)
+            initial_values.extend([0.0] * order)
+            dynamic_state_slices[block.id] = slice(start, start + order)
 
     return dynamic_state_slices, np.array(initial_values, dtype=float)
 
@@ -216,6 +372,7 @@ def compile_diagram(diagram: Diagram) -> CompiledDiagram:
     incoming = _build_incoming_map(diagram)
     static_order = _build_static_order(diagram)
     dynamic_state_slices, initial_state = _build_dynamic_state(diagram)
+    transfer_functions = _build_transfer_function_models(diagram)
     scopes = _build_scopes(diagram, incoming)
 
     return CompiledDiagram(
@@ -224,6 +381,7 @@ def compile_diagram(diagram: Diagram) -> CompiledDiagram:
         incoming=incoming,
         static_order=static_order,
         dynamic_state_slices=dynamic_state_slices,
+        transfer_functions=transfer_functions,
         initial_state=initial_state,
         scopes=scopes,
     )

@@ -45,4 +45,7 @@ class SimulationResponse(BaseModel):
     time: list[float] = Field(default_factory=list)
     outputs: dict[str, list[float]] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    stability_analysis: dict[str, Any] = Field(default_factory=dict)
+    quality_metrics: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
     validation_errors: list[str] = Field(default_factory=list)
