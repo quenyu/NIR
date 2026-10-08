@@ -20,16 +20,6 @@ class ValidateResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
-class AnalyzeRequest(BaseModel):
-    diagram: Diagram
-
-
-class AnalyzeResponse(BaseModel):
-    success: bool
-    analysis: dict[str, Any] = Field(default_factory=dict)
-    validation_errors: list[str] = Field(default_factory=list)
-
-
 class SimulationRequest(BaseModel):
     diagram: Diagram
     t_start: float = 0.0

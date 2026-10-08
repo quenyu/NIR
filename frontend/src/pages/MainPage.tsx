@@ -28,7 +28,6 @@ import ReactFlow, {
 import {
   simulateDiagram,
   SimulationApiError,
-  tunePidController,
   validateDiagram,
 } from "../api/client";
 import {
@@ -55,7 +54,7 @@ import {
   WorkspaceInspector,
   type InspectorView,
 } from "../components/workspace/WorkspaceInspector";
-import { WorkspaceChrome, type WorkspaceMode } from "../components/workspace/WorkspaceChrome";
+import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
 import { WorkspaceRail } from "../components/workspace/WorkspaceRail";
 import { FeedbackEdge, SignalEdge } from "../components/DiagramEdges";
 import {
@@ -88,7 +87,7 @@ import {
   type DiagramNode,
 } from "../features/modelingWorkspace";
 import { EXAMPLE_PRESETS, STARTER_PRESETS, type ExamplePreset } from "./examples";
-import type { PIDTuneResponse, SimulationResponse } from "../types/api";
+import type { SimulationResponse } from "../types/api";
 import {
   defaultParametersFor,
   inputPortsFor,
@@ -132,14 +131,10 @@ function ModelingWorkspace() {
   const [diagnosticsProgress, setDiagnosticsProgress] = useState<DiagnosticProgressItem[]>([]);
   const [isDiagnosticsCollapsed, setIsDiagnosticsCollapsed] = useState(true);
   const [isArranging, setIsArranging] = useState(false);
-  const [isTuning, setIsTuning] = useState(false);
-  const [pidTuningResult, setPidTuningResult] = useState<PIDTuneResponse | null>(null);
   const [isParameterModalOpen, setIsParameterModalOpen] = useState(false);
   const [scopeHeightPx, setScopeHeightPx] = useState(400);
   const [isScopeOpen, setIsScopeOpen] = useState(false);
   const [scopeTab, setScopeTab] = useState<ScopeTab>("plot");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("editor");
-  const [isDefenseGuideVisible, setIsDefenseGuideVisible] = useState(false);
   const [isResizingScope, setIsResizingScope] = useState(false);
   const [inspectorView, setInspectorView] = useState<InspectorView>("simulation");
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(true);
@@ -382,7 +377,6 @@ function ModelingWorkspace() {
       setErrors([]);
       setIsScopeOpen(false);
       setScopeTab("plot");
-      setWorkspaceMode("editor");
     }
   }, [diagnosticsIssues.length, diagnosticsState, errors.length, modelRevisionKey, result]);
 
@@ -480,19 +474,6 @@ function ModelingWorkspace() {
     setIsResizingScope(true);
   }
 
-  function openWorkspaceMode(mode: WorkspaceMode) {
-    setWorkspaceMode(mode);
-    if (mode === "editor") {
-      setScopeTab("plot");
-      setIsScopeOpen(false);
-      return;
-    }
-    setScopeTab(mode);
-    setScopeHeightPx((current) => Math.max(current, 560));
-    setIsScopeOpen(true);
-    setIsLibraryCollapsed(true);
-    setIsInspectorOpen(false);
-  }
 
   function addBlock(type: BlockType, position?: { x: number; y: number }) {
     let counter = nodeCounter;
@@ -561,8 +542,6 @@ function ModelingWorkspace() {
     setResult(null);
     setIsScopeOpen(false);
     setScopeTab("plot");
-    setWorkspaceMode("editor");
-    setIsDefenseGuideVisible(preset.id === "defenseDemo");
     setHierarchyStack([]);
     setServerProjectId(null);
     setServerProjectVersion(null);
@@ -989,8 +968,6 @@ function ModelingWorkspace() {
       setResult(null);
       setIsScopeOpen(false);
       setScopeTab("plot");
-      setWorkspaceMode("editor");
-      setIsDefenseGuideVisible(false);
       setSolver(simulation.solver);
       setTEnd(simulation.t_end);
       setDt(simulation.dt);
@@ -1053,8 +1030,6 @@ function ModelingWorkspace() {
       setResult(null);
       setIsScopeOpen(false);
       setScopeTab("plot");
-      setWorkspaceMode("editor");
-      setIsDefenseGuideVisible(false);
       setHierarchyStack([]);
       setServerProjectId(null);
       setServerProjectVersion(null);
@@ -1219,7 +1194,6 @@ function ModelingWorkspace() {
   }
 
   async function runSimulation() {
-    setWorkspaceMode("editor");
     setScopeTab("plot");
     setIsLibraryCollapsed(true);
     setIsInspectorOpen(false);
@@ -1332,39 +1306,6 @@ function ModelingWorkspace() {
     }
   }
 
-  async function runPidTuning() {
-    if (!selectedNodeId || selectedNode?.blockType !== "PIDController") {
-      setErrors(["Выберите блок PIDController для автоматической настройки."]);
-      return;
-    }
-
-    setIsTuning(true);
-    setInfo("");
-    setErrors([]);
-    try {
-      const response = await tunePidController({
-        diagram: diagramWithCurrentHierarchy(),
-        controller_block_id: [...hierarchyStack.map((frame) => frame.subsystemId), selectedNodeId].join("::"),
-        t_end: Math.max(tEnd, 4),
-        dt: Math.max(dt, 0.01),
-        max_iterations: 8,
-      });
-      setPidTuningResult(response);
-      applySelectedParameters(response.tuned_parameters);
-      setResult(null);
-      const improvement = response.improvement_percent ?? 0;
-      setInfo(
-        `PID настроен: Kp=${response.tuned_parameters.kp.toFixed(4)}, ` +
-        `Ki=${response.tuned_parameters.ki.toFixed(4)}, ` +
-        `Kd=${response.tuned_parameters.kd.toFixed(4)}. ` +
-        `Критерий улучшен на ${improvement.toFixed(1)}%.`,
-      );
-    } catch (error) {
-      setErrors([error instanceof Error ? error.message : "Не удалось настроить PID-регулятор."]);
-    } finally {
-      setIsTuning(false);
-    }
-  }
 
   function clearDiagram() {
     setNodes([]);
@@ -1375,8 +1316,6 @@ function ModelingWorkspace() {
     setResult(null);
     setIsScopeOpen(false);
     setScopeTab("plot");
-    setWorkspaceMode("editor");
-    setIsDefenseGuideVisible(false);
     setErrors([]);
     setInfo("");
     setIsParameterModalOpen(false);
@@ -1407,8 +1346,6 @@ function ModelingWorkspace() {
     <main className={`control-app ${effectiveDiagnosticsState === "running" ? "is-running" : ""}`}>
       <a className="skip-link" href="#diagram-workbench">К рабочей схеме</a>
       <WorkspaceChrome
-        activeMode={workspaceMode}
-        onModeChange={openWorkspaceMode}
         diagnosticsState={effectiveDiagnosticsState}
         simulationSucceeded={Boolean(result?.success)}
         runDisabled={isBusy || diagnosticsState === "validating" || diagnosticsState === "running"}
@@ -1448,7 +1385,6 @@ function ModelingWorkspace() {
           }}
           onToggleScope={() => {
             if (isScopeOpen) {
-              setWorkspaceMode("editor");
               setScopeTab("plot");
             }
             setIsScopeOpen((current) => !current);
@@ -1514,7 +1450,7 @@ function ModelingWorkspace() {
         </aside>
 
         <section className="modeling-main" ref={modelingMainRef} style={modelingMainStyle}>
-          <section className={`canvas-pane ${isDefenseGuideVisible ? "has-defense-guide" : ""}`}>
+          <section className="canvas-pane">
             <header className="canvas-caption">
               <div className="canvas-caption__context">
                 <span className="canvas-caption__eyebrow">Структурная схема · уровень {hierarchyStack.length}</span>
@@ -1575,44 +1511,6 @@ function ModelingWorkspace() {
                 <span className="canvas-caption__hint">Двойной клик — параметры · Delete — удалить</span>
               </div>
             </header>
-            {isDefenseGuideVisible && (
-              <section className="defense-demo-guide" data-testid="defense-demo-guide" aria-label="Сценарий демонстрации для защиты">
-                <div className="defense-demo-guide__title">
-                  <span>Сценарий защиты</span>
-                  <strong>Один объект · три шага</strong>
-                </div>
-                <div className="defense-demo-guide__steps">
-                  <button
-                    type="button"
-                    className={result?.success && workspaceMode === "editor" ? "is-active" : ""}
-                    onClick={() => void runSimulation()}
-                    disabled={isBusy}
-                    data-testid="defense-step-model"
-                  >
-                    <b>01</b><span>Модель<small>переходный процесс</small></span>
-                  </button>
-                  <button
-                    type="button"
-                    className={workspaceMode === "observer" ? "is-active" : ""}
-                    onClick={() => openWorkspaceMode("observer")}
-                    data-testid="defense-step-observer"
-                  >
-                    <b>02</b><span>Наблюдатель<small>оценка состояния</small></span>
-                  </button>
-                  <button
-                    type="button"
-                    className={workspaceMode === "outputFeedback" ? "is-active" : ""}
-                    onClick={() => openWorkspaceMode("outputFeedback")}
-                    data-testid="defense-step-lqg"
-                  >
-                    <b>03</b><span>LQG-контур<small>слежение по выходу</small></span>
-                  </button>
-                </div>
-                <button type="button" className="defense-demo-guide__close" onClick={() => setIsDefenseGuideVisible(false)} aria-label="Скрыть сценарий защиты" title="Скрыть">
-                  <UiIcon name="close" />
-                </button>
-              </section>
-            )}
             <div id="diagram-workbench" className="canvas-wrapper" onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
               <div className="canvas-telemetry" aria-label="Состояние схемы">
                 <span><small>NODES</small><strong>{String(nodes.length).padStart(2, "0")}</strong></span>
@@ -1718,25 +1616,20 @@ function ModelingWorkspace() {
             </div>
           )}
 
-          <section className={`scope-dock ${isScopeOpen ? "is-open" : "is-collapsed"} ${(result?.success || scopeTab === "observer" || scopeTab === "outputFeedback" || scopeTab === "learning") && isScopeOpen ? "has-result" : "has-diagnostics-only"}`}>
-            {isScopeOpen && (result?.success || scopeTab === "observer" || scopeTab === "outputFeedback" || scopeTab === "learning") && (
+          <section className={`scope-dock ${isScopeOpen ? "is-open" : "is-collapsed"} ${result?.success && isScopeOpen ? "has-result" : "has-diagnostics-only"}`}>
+            {isScopeOpen && result?.success && (
               <SimulationChart
                 result={result}
-                diagram={diagramWithCurrentHierarchy()}
                 collapsed={false}
                 onToggleCollapsed={() => {
                   setIsScopeOpen(false);
-                  setWorkspaceMode("editor");
                   setScopeTab("plot");
                 }}
                 requestedTab={scopeTab}
-                onTabChange={(tab) => {
-                  setScopeTab(tab);
-                  setWorkspaceMode(tab === "observer" || tab === "outputFeedback" || tab === "learning" ? tab : "editor");
-                }}
+                onTabChange={setScopeTab}
               />
             )}
-            {!result?.success && scopeTab !== "observer" && scopeTab !== "outputFeedback" && scopeTab !== "learning" && <DiagnosticsPanel
+            {!result?.success && <DiagnosticsPanel
               className="run-diagnostics-panel"
               state={effectiveDiagnosticsState}
               statusLabel={effectiveDiagnosticsState === "success" && !result?.success ? "Схема проверена" : undefined}
@@ -1778,10 +1671,6 @@ function ModelingWorkspace() {
           onOpenParameters={() => setIsParameterModalOpen(true)}
           onDeleteSelected={deleteSelectedNode}
           onEnterSubsystem={enterSubsystem}
-          onTunePid={() => void runPidTuning()}
-          isTuning={isTuning}
-          isBusy={isBusy}
-          pidTuningResult={pidTuningResult}
           nodeCount={nodes.length}
           edgeCount={edges.length}
           hierarchyDepth={hierarchyStack.length}

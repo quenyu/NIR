@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
 
 from app.analysis.system import assemble_state_space
 from app.core.block_specs import get_pid_coefficients
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
-from app.models.tuning import PIDTuneRequest
-from app.analysis.pid_tuning import _settling_time, tune_pid
 from app.simulation.service import simulate_request
 from app.tests.helpers import block, connection
 from app.validation.validator import validate_diagram
@@ -79,59 +76,3 @@ def test_global_model_contains_pid_and_plant_states() -> None:
     assert analysis["controllability"]["full_rank"] is True
     assert analysis["observability"]["full_rank"] is True
     assert analysis["stability"] == "stable"
-
-
-def test_automatic_pid_tuning_does_not_worsen_objective() -> None:
-    diagram = Diagram.model_validate(pid_closed_loop_diagram(kp=0.2, ki=0.05))
-
-    response = tune_pid(
-        PIDTuneRequest(
-            diagram=diagram,
-            controller_block_id="pid1",
-            t_end=4.0,
-            dt=0.05,
-            kp_bounds=(0.0, 8.0),
-            ki_bounds=(0.0, 5.0),
-            kd_bounds=(0.0, 1.0),
-            max_iterations=1,
-            seed=7,
-        )
-    )
-
-    assert response.success is True
-    assert response.tuned_score is not None
-    assert response.initial_score is not None
-    assert response.tuned_score <= response.initial_score
-    assert response.improvement_percent is not None
-    assert response.improvement_percent >= 0.0
-    assert response.evaluations <= 30
-
-
-def test_pid_settling_time_is_measured_from_delayed_reference_start() -> None:
-    time = np.asarray([0.0, 1.0, 2.0, 3.0, 4.0])
-    error = np.asarray([0.0, 0.0, 1.0, 0.1, 0.0])
-
-    assert _settling_time(time, error, 1.0, 2.0) == pytest.approx(2.0)
-
-
-def test_pid_tuning_endpoint_returns_parameters(client: TestClient) -> None:
-    response = client.post(
-        "/tune/pid",
-        json={
-            "diagram": pid_closed_loop_diagram(kp=0.2, ki=0.05),
-            "controller_block_id": "pid1",
-            "t_end": 3.0,
-            "dt": 0.05,
-            "kp_bounds": [0.0, 6.0],
-            "ki_bounds": [0.0, 4.0],
-            "kd_bounds": [0.0, 1.0],
-            "max_iterations": 1,
-            "seed": 11,
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["success"] is True
-    assert set(payload["tuned_parameters"]) == {"kp", "ki", "kd", "filter_n"}
-    assert payload["tuned_score"] <= payload["initial_score"]

@@ -87,10 +87,6 @@ export function WorkspaceRail({
           <UiIcon name="activity" />
           <span>{simulationSucceeded ? "Результаты" : "Диагностика"}</span>
         </button>
-        <a href="/experiments">
-          <UiIcon name="flask" />
-          <span>Эксперименты</span>
-        </a>
       </div>
 
       <div className={`mission-rail__state is-${diagnosticsState}`} title={currentState}>

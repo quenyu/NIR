@@ -4,34 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
 from app.models.api import (
-    AnalyzeRequest,
-    AnalyzeResponse,
     SimulationRequest,
     SimulationResponse,
     ValidateRequest,
     ValidateResponse,
 )
-from app.models.experiments import (
-    ExperimentCatalogResponse,
-    ExperimentRunRequest,
-    ExperimentRunResponse,
-)
-from app.models.tuning import PIDTuneRequest, PIDTuneResponse
-from app.models.learning import SafeLearningRequest, SafeLearningResponse
-from app.models.observer import ObserverExperimentRequest, ObserverExperimentResponse
-from app.models.output_feedback import OutputFeedbackRequest, OutputFeedbackResponse
 from app.models.projects import (
     ProjectCreateRequest,
     ProjectListResponse,
     ProjectRecord,
     ProjectUpdateRequest,
 )
-from app.analysis.pid_tuning import tune_pid
-from app.analysis.safe_learning import run_safe_learning
-from app.analysis.observer import run_observer_experiment
-from app.analysis.output_feedback import run_output_feedback_experiment
-from app.experiments.service import get_experiments_catalog, run_experiment
-from app.analysis.system import assemble_state_space
 from app.simulation.compiler import DiagramCompilationError
 from app.simulation.service import simulate_request
 from app.validation.validator import validate_diagram
@@ -122,23 +105,6 @@ def validate_endpoint(payload: ValidateRequest) -> ValidateResponse:
     return ValidateResponse(valid=not errors, errors=errors)
 
 
-@router.post("/analyze", response_model=AnalyzeResponse)
-def analyze_endpoint(payload: AnalyzeRequest) -> AnalyzeResponse | JSONResponse:
-    errors = validate_diagram(payload.diagram)
-    if errors:
-        response = AnalyzeResponse(success=False, validation_errors=errors)
-        return JSONResponse(status_code=422, content=response.model_dump())
-
-    try:
-        return AnalyzeResponse(
-            success=True,
-            analysis=assemble_state_space(payload.diagram),
-        )
-    except DiagramCompilationError as exc:
-        response = AnalyzeResponse(success=False, validation_errors=exc.errors)
-        return JSONResponse(status_code=422, content=response.model_dump())
-
-
 @router.post("/simulate", response_model=SimulationResponse)
 def simulate_endpoint(payload: SimulationRequest) -> SimulationResponse | JSONResponse:
     errors = validate_diagram(payload.diagram)
@@ -172,64 +138,3 @@ def simulate_endpoint(payload: SimulationRequest) -> SimulationResponse | JSONRe
             validation_errors=[str(exc)],
         )
         return JSONResponse(status_code=422, content=response.model_dump())
-
-
-@router.get("/experiments/catalog", response_model=ExperimentCatalogResponse)
-def experiments_catalog_endpoint() -> ExperimentCatalogResponse:
-    return get_experiments_catalog()
-
-
-@router.post("/experiments/run", response_model=ExperimentRunResponse)
-def experiments_run_endpoint(payload: ExperimentRunRequest) -> ExperimentRunResponse:
-    try:
-        return run_experiment(payload)
-    except (ValueError, RuntimeError, FloatingPointError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/tune/pid", response_model=PIDTuneResponse)
-def tune_pid_endpoint(payload: PIDTuneRequest) -> PIDTuneResponse:
-    errors = validate_diagram(payload.diagram)
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
-    try:
-        return tune_pid(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/learn/safe-controller", response_model=SafeLearningResponse)
-def safe_controller_learning_endpoint(payload: SafeLearningRequest) -> SafeLearningResponse:
-    errors = validate_diagram(payload.diagram)
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
-    try:
-        return run_safe_learning(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/analyze/observer", response_model=ObserverExperimentResponse)
-def observer_experiment_endpoint(
-    payload: ObserverExperimentRequest,
-) -> ObserverExperimentResponse:
-    errors = validate_diagram(payload.diagram)
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
-    try:
-        return run_observer_experiment(payload)
-    except (ValueError, RuntimeError, FloatingPointError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/analyze/output-feedback", response_model=OutputFeedbackResponse)
-def output_feedback_experiment_endpoint(
-    payload: OutputFeedbackRequest,
-) -> OutputFeedbackResponse:
-    errors = validate_diagram(payload.diagram)
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
-    try:
-        return run_output_feedback_experiment(payload)
-    except (ValueError, RuntimeError, FloatingPointError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc

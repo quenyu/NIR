@@ -1,4 +1,3 @@
-import type { PIDTuneResponse } from "../../types/api";
 import { blockTypeLabel, type BlockNodeData } from "../../types/diagram";
 import { russianCountNoun } from "../../features/modelingWorkspace";
 import { UiIcon } from "../UiIcon";
@@ -24,10 +23,6 @@ interface WorkspaceInspectorProps {
   onOpenParameters: () => void;
   onDeleteSelected: () => void;
   onEnterSubsystem: (nodeId: string) => void;
-  onTunePid: () => void;
-  isTuning: boolean;
-  isBusy: boolean;
-  pidTuningResult: PIDTuneResponse | null;
   nodeCount: number;
   edgeCount: number;
   hierarchyDepth: number;
@@ -52,10 +47,6 @@ export function WorkspaceInspector({
   onOpenParameters,
   onDeleteSelected,
   onEnterSubsystem,
-  onTunePid,
-  isTuning,
-  isBusy,
-  pidTuningResult,
   nodeCount,
   edgeCount,
   hierarchyDepth,
@@ -141,33 +132,6 @@ export function WorkspaceInspector({
               <button type="button" className="btn btn-secondary" onClick={onOpenParameters} disabled={!selectedNodeId}><UiIcon name="settings" />Параметры</button>
               <button type="button" className="btn btn-danger-soft" onClick={onDeleteSelected} disabled={!selectedNodeId}><UiIcon name="trash" />Удалить</button>
             </div>
-            {selectedNode?.blockType === "PIDController" && (
-              <div className="pid-tuning-card">
-                <div><strong>Автоматический синтез</strong><span>Минимизация IAE, ISE, перерегулирования и установившейся ошибки.</span></div>
-                <button type="button" className="btn btn-primary btn-full" onClick={onTunePid} disabled={isTuning || isBusy}><UiIcon name="activity" />{isTuning ? "Подбираю коэффициенты…" : "Настроить PID"}</button>
-                {isTuning && <p className="pid-tuning-progress">Выполняются расчётные прогоны модели…</p>}
-                {pidTuningResult?.controller_block_id.endsWith(selectedNode.blockId) && (
-                  <section className="pid-tuning-result" data-testid="pid-tuning-result">
-                    <header><span>Результат синтеза</span><strong>+{(pidTuningResult.improvement_percent ?? 0).toFixed(1)}%</strong></header>
-                    <div className="pid-tuning-result__comparison">
-                      <div><span>Критерий до</span><strong>{Number(pidTuningResult.initial_score ?? 0).toFixed(3)}</strong></div>
-                      <div><span>Критерий после</span><strong>{Number(pidTuningResult.tuned_score ?? 0).toFixed(3)}</strong></div>
-                    </div>
-                    <dl className="pid-tuning-result__gains">
-                      <div><dt>Kp</dt><dd>{pidTuningResult.tuned_parameters.kp.toFixed(3)}</dd></div>
-                      <div><dt>Ki</dt><dd>{pidTuningResult.tuned_parameters.ki.toFixed(3)}</dd></div>
-                      <div><dt>Kd</dt><dd>{pidTuningResult.tuned_parameters.kd.toFixed(3)}</dd></div>
-                    </dl>
-                    <div className="pid-tuning-result__metrics">
-                      <span>tуст <strong>{Number(pidTuningResult.metrics.settling_time ?? 0).toFixed(3)} с</strong></span>
-                      <span>σ <strong>{Number(pidTuningResult.metrics.overshoot_percent ?? 0).toFixed(2)}%</strong></span>
-                      <span>IAE <strong>{Number(pidTuningResult.metrics.iae ?? 0).toFixed(4)}</strong></span>
-                    </div>
-                    <p>Коэффициенты применены. Повторно запустите модель, чтобы получить переходный процесс с новым регулятором.</p>
-                  </section>
-                )}
-              </div>
-            )}
           </section>
         )}
       </div>

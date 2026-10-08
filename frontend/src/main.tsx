@@ -9,7 +9,6 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "reactflow/dist/style.css";
 import "./styles/workbench.css";
-import "./styles/experiments.css";
 import "./styles/axiom.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

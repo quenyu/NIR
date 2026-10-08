@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.analysis.system import assemble_state_space
 from app.models.diagram import Diagram
@@ -45,13 +44,3 @@ def test_closed_loop_feedback_is_included_in_global_a_matrix() -> None:
     assert analysis["matrices"]["B"][0][0] == pytest.approx(1.25)
     assert analysis["poles"][0]["real"] == pytest.approx(-2.5)
     assert analysis["stability"] == "stable"
-
-
-def test_analyze_endpoint_returns_global_model(client: TestClient) -> None:
-    response = client.post("/analyze", json={"diagram": first_order_step_diagram()})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["success"] is True
-    assert payload["analysis"]["state_dimension"] == 1
-    assert payload["analysis"]["matrices"]["A"][0][0] == pytest.approx(-2.0)

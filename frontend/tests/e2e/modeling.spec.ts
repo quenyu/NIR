@@ -22,50 +22,6 @@ test("loads an example and displays a plot after simulation", async ({ page }) =
   await expect(page.getByTestId("plot-ready")).toBeVisible();
 });
 
-test("opens the compact three-step defense demonstration", async ({ page }) => {
-  await page.route("**/analyze", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        success: true,
-        analysis: {
-          model_type: "continuous_lti",
-          state_dimension: 2,
-          input_dimension: 1,
-          output_dimension: 1,
-          state_labels: ["x1", "x2"],
-          input_blocks: ["control_input"],
-          output_labels: ["y"],
-          matrices: { A: [[0, 1], [-6.25, -2.25]], B: [[0], [6.25]], C: [[1, 0]], D: [[0]] },
-          poles: [{ real: -1.125, imag: 2.233 }, { real: -1.125, imag: -2.233 }],
-          modes: [],
-          characteristic_polynomial: [1, 2.25, 6.25],
-          spectral_abscissa: -1.125,
-          stability_degree: 1.125,
-          stability: "stable",
-          controllability: { rank: 2, full_rank: true },
-          observability: { rank: 2, full_rank: true },
-        },
-        validation_errors: [],
-      }),
-    });
-  });
-
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("starter-example-defenseDemo").click();
-
-  await expect(page.getByTestId("defense-demo-guide")).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(3);
-
-  await page.getByTestId("defense-step-observer").click();
-  await expect(page.getByTestId("open-observer")).toHaveClass(/is-active/);
-
-  await page.getByTestId("defense-step-lqg").click();
-  await expect(page.getByTestId("open-output-feedback")).toHaveClass(/is-active/);
-  await expect(page.getByRole("button", { name: "Сравнить контуры" })).toBeVisible();
-});
-
 test("explains state-space model provenance and matrix dimensions", async ({ page }) => {
   await page.route("**/simulate", async (route) => {
     await route.fulfill({
@@ -201,39 +157,6 @@ test("opens the DC motor starter as a compact hierarchical control system", asyn
 
   await page.getByTestId("leave-subsystem-button").click();
   await expect(page.locator(".react-flow__node")).toHaveCount(5);
-});
-
-test("shows an explainable before-and-after report after PID synthesis", async ({ page }) => {
-  await page.route("**/tune/pid", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        success: true,
-        controller_block_id: "speed_pid",
-        initial_parameters: { kp: 2, ki: 1, kd: 0.05, filter_n: 20 },
-        tuned_parameters: { kp: 6.263, ki: 7.004, kd: 0.298, filter_n: 20 },
-        initial_score: 1.401,
-        tuned_score: 0.108,
-        improvement_percent: 92.3,
-        metrics: { iae: 0.0714, ise: 0.031, final_error: 0.000005, overshoot_percent: 0, settling_time: 0.38, stable: 1 },
-        evaluations: 135,
-        algorithm: "differential_evolution",
-        warnings: [],
-      }),
-    });
-  });
-
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("starter-example-dcMotorSpeedControl").click();
-  await page.getByTestId("node-speed_pid").click();
-  await page.getByRole("button", { name: "Настроить PID" }).click();
-
-  const report = page.getByTestId("pid-tuning-result");
-  await expect(report).toBeVisible();
-  await expect(report).toContainText("+92.3%");
-  await expect(report).toContainText("0.380 с");
-  await expect(report).toContainText("Kp");
 });
 
 test("builds, connects, and simulates a model from the block library", async ({ page }) => {

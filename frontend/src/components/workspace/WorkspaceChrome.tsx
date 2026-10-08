@@ -3,11 +3,7 @@ import type { DiagnosticsRunState } from "../DiagnosticsPanel";
 import { formatRussianCount } from "../../features/modelingWorkspace";
 import { UiIcon } from "../UiIcon";
 
-export type WorkspaceMode = "editor" | "observer" | "outputFeedback" | "learning";
-
 interface WorkspaceChromeProps {
-  activeMode: WorkspaceMode;
-  onModeChange: (mode: WorkspaceMode) => void;
   diagnosticsState: DiagnosticsRunState;
   simulationSucceeded: boolean;
   runDisabled: boolean;
@@ -37,8 +33,6 @@ function statusLabel(state: DiagnosticsRunState, simulationSucceeded: boolean): 
 }
 
 export function WorkspaceChrome({
-  activeMode,
-  onModeChange,
   diagnosticsState,
   simulationSucceeded,
   runDisabled,
@@ -98,13 +92,6 @@ export function WorkspaceChrome({
         <div><strong>CONTROL LAB</strong><span>DYNAMIC SYSTEMS</span></div>
       </div>
 
-      <nav className="app-nav" aria-label="Основная навигация">
-        <button type="button" className={`app-nav__link ${activeMode === "editor" ? "is-active" : ""}`} aria-current={activeMode === "editor" ? "page" : undefined} onClick={() => onModeChange("editor")}><UiIcon name="blocks" />Редактор</button>
-        <button type="button" className={`app-nav__link ${activeMode === "observer" ? "is-active" : ""}`} aria-current={activeMode === "observer" ? "page" : undefined} onClick={() => onModeChange("observer")} data-testid="open-observer"><UiIcon name="activity" />Наблюдатель</button>
-        <button type="button" className={`app-nav__link ${activeMode === "outputFeedback" ? "is-active" : ""}`} aria-current={activeMode === "outputFeedback" ? "page" : undefined} onClick={() => onModeChange("outputFeedback")} data-testid="open-output-feedback"><UiIcon name="target" />LQG-контур</button>
-        <button type="button" className={`app-nav__link ${activeMode === "learning" ? "is-active" : ""}`} aria-current={activeMode === "learning" ? "page" : undefined} onClick={() => onModeChange("learning")} data-testid="open-learning"><UiIcon name="database" />Обучение</button>
-        <a href="/experiments" className="app-nav__link"><UiIcon name="flask" />Эксперименты</a>
-      </nav>
 
       <div className="header-project" title={projectTitle || "Линейная непрерывная модель"}>
         <span>~/models/current</span>

@@ -36,7 +36,7 @@ class ControlLabRequestHandler(SimpleHTTPRequestHandler):
         is_client_route = not Path(request_path).suffix
 
         # Always return a fresh app shell for browser navigations. Reusing
-        # SimpleHTTPRequestHandler's conditional response for /experiments
+        # SimpleHTTPRequestHandler's conditional response for client routes
         # could produce a 304 for /index.html and leave Ctrl+R on stale state.
         if request_path in {"/", "/index.html"}:
             return self.serve_app_shell()

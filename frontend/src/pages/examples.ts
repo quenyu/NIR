@@ -128,41 +128,36 @@ const compactMeasurementSubsystem = sinkSubsystem(
 
 export const EXAMPLE_PRESETS: ExamplePreset[] = [
   {
-    id: "defenseDemo",
-    title: "Демонстрация для защиты",
+    id: "unstablePlantFeedback",
+    title: "Стабилизация неустойчивого объекта",
     diagram: {
       blocks: [
-        {
-          id: "control_input",
-          type: "StepInput",
-          parameters: { amplitude: 1, t0: 0 },
-          input_ports: [],
-          output_ports: ["out"],
-        },
+        { id: "reference", type: "StepInput", parameters: { amplitude: 1, t0: 0 }, input_ports: [], output_ports: ["out"] },
+        { id: "error", type: "Sum", parameters: { signs: ["+", "-"] }, input_ports: ["in1", "in2"], output_ports: ["out"] },
+        { id: "controller", type: "Gain", parameters: { k: 3 }, input_ports: ["in"], output_ports: ["out"] },
         {
           id: "plant",
-          type: "SecondOrderOscillator",
-          parameters: { k: 1, wn: 2.5, zeta: 0.45, y0: 0, v0: 0 },
+          type: "TransferFunction",
+          parameters: { numerator: [1], denominator: [1, -1] },
           input_ports: ["in"],
           output_ports: ["out"],
         },
-        {
-          id: "measured_output",
-          type: "Scope",
-          parameters: { name: "Измеряемый выход", label: "y" },
-          input_ports: ["in"],
-          output_ports: [],
-        },
+        { id: "output", type: "Scope", parameters: { label: "y" }, input_ports: ["in"], output_ports: [] },
       ],
       connections: [
-        { from_block: "control_input", from_port: "out", to_block: "plant", to_port: "in" },
-        { from_block: "plant", from_port: "out", to_block: "measured_output", to_port: "in" },
+        { from_block: "reference", from_port: "out", to_block: "error", to_port: "in1" },
+        { from_block: "error", from_port: "out", to_block: "controller", to_port: "in" },
+        { from_block: "controller", from_port: "out", to_block: "plant", to_port: "in" },
+        { from_block: "plant", from_port: "out", to_block: "error", to_port: "in2" },
+        { from_block: "plant", from_port: "out", to_block: "output", to_port: "in" },
       ],
     },
     positions: {
-      control_input: { x: 80, y: 190 },
-      plant: { x: 360, y: 190 },
-      measured_output: { x: 640, y: 190 },
+      reference: { x: 60, y: 190 },
+      error: { x: 300, y: 190 },
+      controller: { x: 540, y: 190 },
+      plant: { x: 780, y: 190 },
+      output: { x: 1040, y: 190 },
     },
   },
   {
@@ -1115,7 +1110,7 @@ export interface StarterPreset {
 }
 
 const STARTER_DEFINITIONS = [
-  { id: "defenseDemo", title: "Демонстрация для защиты", category: "Защита", description: "Модель → наблюдатель → LQG за три шага" },
+  { id: "unstablePlantFeedback", title: "Стабилизация неустойчивого объекта", category: "Обратная связь", description: "1/(s−1) и П-регулятор: устойчивость замкнутой системы" },
   { id: "firstOrder", title: "Звено 1-го порядка", category: "Базовая модель", description: "Переходная характеристика K/(Ts+1)" },
   { id: "secondOrder", title: "Колебательная система", category: "Динамика", description: "Перерегулирование и коэффициент затухания" },
   { id: "closedLoop", title: "Отрицательная обратная связь", category: "Анализ", description: "Замкнутый контур и проверка устойчивости" },

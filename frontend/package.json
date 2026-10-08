@@ -10,14 +10,9 @@
     "test:e2e": "playwright test",
     "test:diagnostics": "node tests/unit/run-diagnostics-tests.mjs",
     "test:layout": "node tests/unit/run-layout-tests.mjs",
-    "test:persistence": "node tests/unit/run-persistence-tests.mjs",
-    "test:defense-report": "node tests/unit/run-defense-report-tests.mjs",
-    "test:visual-contract": "node tests/unit/run-visual-contract-tests.mjs"
+    "test:persistence": "node tests/unit/run-persistence-tests.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.2.8",
-    "@fontsource-variable/space-grotesk": "^5.2.10",
-    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "elkjs": "^0.11.1",
     "plotly.js": "^2.35.2",

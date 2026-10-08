@@ -33,7 +33,7 @@ class FrontendServerTests(unittest.TestCase):
 
     def test_client_route_ignores_conditional_cache_and_returns_app_shell(self) -> None:
         request = urllib.request.Request(
-            f"{self.base_url}/experiments",
+            f"{self.base_url}/some/client-route",
             headers={
                 "If-Modified-Since": "Wed, 31 Dec 2099 23:59:59 GMT",
             },

@@ -3,24 +3,19 @@ import { createPortal } from "react-dom";
 import Plot from "./Plot";
 import { PLOT_FONT_COLOR, PLOT_UI_FONT_FAMILY } from "./plotTypography";
 import type { SimulationResponse } from "../types/api";
-import type { Diagram } from "../types/diagram";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
-import { SafeLearningPanel } from "./simulation/SafeLearningPanel";
-import { ObserverPanel } from "./simulation/ObserverPanel";
-import { OutputFeedbackPanel } from "./simulation/OutputFeedbackPanel";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 
 interface SimulationChartProps {
   result: SimulationResponse | null;
-  diagram?: Diagram | null;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
   requestedTab?: ScopeTab;
   onTabChange?: (tab: ScopeTab) => void;
 }
 
-export type ScopeTab = "plot" | "signals" | "analysis" | "frequency" | "stateSpace" | "observer" | "outputFeedback" | "learning" | "meta";
+export type ScopeTab = "plot" | "signals" | "analysis" | "frequency" | "stateSpace" | "meta";
 
 interface SignalStatsRow {
   name: string;
@@ -89,7 +84,6 @@ const frequencyPlotTheme = {
 
 export function SimulationChart({
   result,
-  diagram = null,
   collapsed = false,
   onToggleCollapsed,
   requestedTab,
@@ -443,7 +437,7 @@ export function SimulationChart({
     <>
       <section className="panel chart-panel scope-panel">
         <header className="scope-panel__header">
-          <h2>{activeTab === "learning" ? "Обучение регулятора" : activeTab === "outputFeedback" ? "Управление по выходу" : activeTab === "observer" ? "Оценивание состояния" : "Осциллограф"}</h2>
+          <h2>Осциллограф</h2>
           <div className="scope-header-actions">
             <nav className="scope-tabs" aria-label="Представление результатов">
               <button
@@ -482,30 +476,6 @@ export function SimulationChart({
                 onClick={() => selectTab("stateSpace")}
               >
                 Матрицы
-              </button>
-              <button
-                type="button"
-                data-testid="scope-tab-observer"
-                className={`btn btn-tab ${activeTab === "observer" ? "active" : ""}`}
-                onClick={() => selectTab("observer")}
-              >
-                Наблюдатель
-              </button>
-              <button
-                type="button"
-                data-testid="scope-tab-output-feedback"
-                className={`btn btn-tab ${activeTab === "outputFeedback" ? "active" : ""}`}
-                onClick={() => selectTab("outputFeedback")}
-              >
-                LQG-контур
-              </button>
-              <button
-                type="button"
-                data-testid="scope-tab-safe-learning"
-                className={`btn btn-tab ${activeTab === "learning" ? "active" : ""}`}
-                onClick={() => selectTab("learning")}
-              >
-                Обучение
               </button>
               <button
                 type="button"
@@ -548,9 +518,6 @@ export function SimulationChart({
           {activeTab === "analysis" && renderAnalysisTab()}
           {activeTab === "frequency" && renderFrequencyTab()}
           {activeTab === "stateSpace" && renderStateSpaceTab()}
-          {activeTab === "observer" && <ObserverPanel diagram={diagram} simulation={result} />}
-          {activeTab === "outputFeedback" && <OutputFeedbackPanel diagram={diagram} simulation={result} />}
-          {activeTab === "learning" && <SafeLearningPanel diagram={diagram} simulation={result} />}
           {activeTab === "meta" && renderMetaTab()}
         </div>
       </section>
