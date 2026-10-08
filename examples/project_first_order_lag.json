@@ -1,0 +1,92 @@
+{
+  "format": "nir-dynamics-project",
+  "version": 1,
+  "metadata": {
+    "title": "Апериодическое звено первого порядка",
+    "exported_at": "2026-07-07T12:00:00.000Z",
+    "generator": "NIR Dynamics Web Prototype"
+  },
+  "diagram": {
+    "blocks": [
+      {
+        "id": "step1",
+        "type": "StepInput",
+        "parameters": {
+          "amplitude": 1,
+          "t0": 0
+        },
+        "input_ports": [],
+        "output_ports": [
+          "out"
+        ]
+      },
+      {
+        "id": "lag1",
+        "type": "FirstOrderLag",
+        "parameters": {
+          "k": 2,
+          "T": 1,
+          "y0": 0
+        },
+        "input_ports": [
+          "in"
+        ],
+        "output_ports": [
+          "out"
+        ]
+      },
+      {
+        "id": "scope1",
+        "type": "Scope",
+        "parameters": {
+          "label": "y"
+        },
+        "input_ports": [
+          "in"
+        ],
+        "output_ports": []
+      }
+    ],
+    "connections": [
+      {
+        "from_block": "step1",
+        "from_port": "out",
+        "to_block": "lag1",
+        "to_port": "in"
+      },
+      {
+        "from_block": "lag1",
+        "from_port": "out",
+        "to_block": "scope1",
+        "to_port": "in"
+      }
+    ]
+  },
+  "layout": {
+    "positions": {
+      "step1": {
+        "x": 100,
+        "y": 180
+      },
+      "lag1": {
+        "x": 360,
+        "y": 180
+      },
+      "scope1": {
+        "x": 640,
+        "y": 180
+      }
+    },
+    "viewport": {
+      "x": 20,
+      "y": 40,
+      "zoom": 1
+    }
+  },
+  "simulation": {
+    "solver": "solve_ivp",
+    "t_start": 0,
+    "t_end": 6,
+    "dt": 0.01
+  }
+}

@@ -210,3 +210,35 @@ def closed_loop_dynamic_diagram() -> dict[str, Any]:
 def deep_copy_diagram(diagram: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(diagram)
 
+
+def butterworth_lpf_step_diagram() -> dict[str, Any]:
+    return {
+        "blocks": [
+            block(
+                "step1",
+                "StepInput",
+                parameters={"amplitude": 1.0, "t0": 0.0},
+                input_ports=[],
+                output_ports=["out"],
+            ),
+            block(
+                "bw1",
+                "ButterworthLPF",
+                parameters={"order": 2, "cutoff_freq": 10.0, "y0": 0.0},
+                input_ports=["in"],
+                output_ports=["out"],
+            ),
+            block(
+                "scope1",
+                "Scope",
+                parameters={"label": "y"},
+                input_ports=["in"],
+                output_ports=[],
+            ),
+        ],
+        "connections": [
+            connection("step1", "out", "bw1", "in"),
+            connection("bw1", "out", "scope1", "in"),
+        ],
+    }
+

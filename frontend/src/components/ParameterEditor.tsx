@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { blockTypeLabel, normalizedSigns, type BlockNodeData } from "../types/diagram";
+import { UiIcon } from "./UiIcon";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 interface ParameterEditorProps {
   open: boolean;
@@ -7,6 +9,34 @@ interface ParameterEditorProps {
   connectedInputPorts?: string[];
   onClose: () => void;
   onParametersApply: (updates: Record<string, unknown>) => void;
+}
+
+const PARAMETER_LABELS: Record<string, string> = {
+  amplitude: "Амплитуда",
+  t0: "Момент начала, с",
+  k: "Коэффициент усиления K",
+  T: "Постоянная времени T",
+  y0: "Начальное значение y₀",
+  v0: "Начальная скорость v₀",
+  wn: "Собственная частота ωₙ",
+  zeta: "Коэффициент затухания ζ",
+  numerator: "Числитель",
+  denominator: "Знаменатель",
+  order: "Порядок фильтра",
+  cutoff_freq: "Частота среза, рад/с",
+  kp: "Пропорциональный коэффициент Kₚ",
+  ki: "Интегральный коэффициент Kᵢ",
+  kd: "Дифференциальный коэффициент Kd",
+  filter_n: "Частота фильтра производной N",
+  name: "Название блока",
+  label: "Имя сигнала",
+  reference: "Заданное значение r",
+  signs: "Входы сумматора",
+  port: "Имя внешнего порта",
+};
+
+function parameterLabel(key: string): string {
+  return PARAMETER_LABELS[key] ?? key;
 }
 
 function formatParameterValue(value: unknown): string {
@@ -63,6 +93,7 @@ export function ParameterEditor({
 }: ParameterEditorProps) {
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [localMessage, setLocalMessage] = useState<string>("");
+  const dialogRef = useDialogFocus<HTMLElement>(open, onClose);
 
   useEffect(() => {
     if (!selectedNode) {
@@ -80,15 +111,19 @@ export function ParameterEditor({
   if (!selectedNode) {
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="parameter-modal" onClick={(event) => event.stopPropagation()}>
+        <section ref={dialogRef} className="parameter-modal" role="dialog" aria-modal="true" aria-labelledby="parameter-modal-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
           <header className="parameter-modal__header">
-            <h2>Параметры блока</h2>
+            <div>
+              <span className="panel-kicker">Инспектор модели</span>
+              <h2 id="parameter-modal-title">Параметры блока</h2>
+            </div>
             <button type="button" className="btn" onClick={onClose}>
+              <UiIcon name="close" />
               Закрыть
             </button>
           </header>
           <p>Сначала выберите блок на рабочем поле.</p>
-        </div>
+        </section>
       </div>
     );
   }
@@ -143,29 +178,42 @@ export function ParameterEditor({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <section
+          ref={dialogRef}
           className="parameter-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="parameter-modal-title"
+          tabIndex={-1}
           onClick={(event) => event.stopPropagation()}
           data-testid="parameter-modal"
       >
         <header className="parameter-modal__header">
           <div>
-            <h2>Параметры блока</h2>
+            <span className="panel-kicker">Инспектор модели</span>
+            <h2 id="parameter-modal-title">Параметры блока</h2>
             <p>
               <strong>{blockTypeLabel(selectedNode.blockType)}</strong> ({selectedNode.blockId})
             </p>
           </div>
           <button type="button" className="btn" onClick={onClose}>
+            <UiIcon name="close" />
             Закрыть
           </button>
         </header>
 
         <div className="parameter-list">
-          {Object.entries(draft).map(([key, value]) => {
+          {selectedNode.blockType === "Subsystem" && (
+            <div className="parameter-item subsystem-parameter-summary">
+              <span>Вложенная схема</span>
+              <p>Содержимое редактируется кнопкой «Открыть подсистему» в инспекторе.</p>
+            </div>
+          )}
+          {Object.entries(draft).filter(([key]) => key !== "diagram" && key !== "layout").map(([key, value]) => {
             if (selectedNode.blockType === "Sum" && key === "signs") {
               const signs = normalizedSigns(value);
               return (
                 <div key={`${selectedNode.blockId}-${key}`} className="parameter-item">
-                  <span>{key}</span>
+                  <span>{parameterLabel(key)}</span>
                   <div className="sum-sign-editor">
                     <div className="sum-sign-editor__header">
                       <span>Порт</span>
@@ -209,7 +257,7 @@ export function ParameterEditor({
 
             return (
               <label key={`${selectedNode.blockId}-${key}`} className="parameter-item">
-                <span>{key}</span>
+                <span>{parameterLabel(key)}</span>
                 <input
                   value={formatParameterValue(value)}
                   onChange={(event) => updateDraft(key, event.target.value)}
@@ -232,6 +280,7 @@ export function ParameterEditor({
             onClick={applyChanges}
             data-testid="apply-params-button"
           >
+            <UiIcon name="check" />
             Применить
           </button>
         </div>

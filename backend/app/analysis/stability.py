@@ -6,6 +6,7 @@ import numpy as np
 
 from app.core.block_specs import get_transfer_function_coefficients
 from app.models.diagram import Diagram
+from app.simulation.hierarchy import flatten_diagram
 
 
 def _stability_status(poles: np.ndarray, tolerance: float) -> str:
@@ -37,7 +38,7 @@ def analyze_transfer_function_stability(
 ) -> dict[str, Any]:
     transfer_functions: list[dict[str, Any]] = []
 
-    for block in diagram.blocks:
+    for block in flatten_diagram(diagram).blocks:
         if block.type != "TransferFunction":
             continue
 

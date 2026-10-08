@@ -17,6 +17,9 @@ def _finite_or_none(value: float | None) -> float | None:
 def _empty_metrics(settling_band: float) -> dict[str, Any]:
     return {
         "final_value": None,
+        "target_value": None,
+        "target_source": None,
+        "min_value": None,
         "max_value": None,
         "overshoot_percent": None,
         "settling_time": None,
@@ -29,57 +32,70 @@ def _empty_metrics(settling_band: float) -> dict[str, Any]:
     }
 
 
-def _overshoot_percent(values: np.ndarray, final_value: float) -> float | None:
-    if abs(final_value) <= 1e-12:
+def _overshoot_percent(values: np.ndarray, target_value: float) -> float | None:
+    transition = target_value - float(values[0])
+    if abs(transition) <= 1e-12:
         return None
-    if final_value >= 0.0:
+    if transition > 0.0:
         peak = float(np.max(values))
-        overshoot = max(0.0, (peak - final_value) / abs(final_value) * 100.0)
+        overshoot = max(0.0, (peak - target_value) / abs(transition) * 100.0)
     else:
         peak = float(np.min(values))
-        overshoot = max(0.0, (final_value - peak) / abs(final_value) * 100.0)
+        overshoot = max(0.0, (target_value - peak) / abs(transition) * 100.0)
     return overshoot
 
 
 def _settling_time(
     time: np.ndarray,
     values: np.ndarray,
-    final_value: float,
+    target_value: float,
     band: float,
 ) -> float | None:
-    tolerance = abs(final_value) * band
+    response_scale = max(
+        abs(target_value - float(values[0])),
+        float(np.max(np.abs(values - target_value))),
+    )
+    tolerance = response_scale * band
     if tolerance <= 1e-12:
         return None
 
-    outside = np.flatnonzero(np.abs(values - final_value) > tolerance)
+    outside = np.flatnonzero(np.abs(values - target_value) > tolerance)
     if outside.size == 0:
-        return float(time[0])
+        return 0.0
     last_outside = int(outside[-1])
     if last_outside >= len(time) - 2:
         return None
-    return float(time[last_outside + 1])
+    return float(time[last_outside + 1] - time[0])
 
 
-def _rise_time(time: np.ndarray, values: np.ndarray, final_value: float) -> float | None:
-    if abs(final_value) <= 1e-12:
+def _rise_time(time: np.ndarray, values: np.ndarray, target_value: float) -> float | None:
+    initial_value = float(values[0])
+    transition = target_value - initial_value
+    if abs(transition) <= 1e-12:
         return None
 
-    low = 0.1 * final_value
-    high = 0.9 * final_value
-    if final_value > 0.0:
-        low_crossings = np.flatnonzero(values >= low)
-        high_crossings = np.flatnonzero(values >= high)
-    else:
-        low_crossings = np.flatnonzero(values <= low)
-        high_crossings = np.flatnonzero(values <= high)
+    low = initial_value + 0.1 * transition
+    high = initial_value + 0.9 * transition
+    def crossing_time(threshold: float) -> float | None:
+        reached = values >= threshold if transition > 0.0 else values <= threshold
+        indices = np.flatnonzero(reached)
+        if indices.size == 0:
+            return None
+        index = int(indices[0])
+        if index == 0:
+            return float(time[0])
+        left_value = float(values[index - 1])
+        right_value = float(values[index])
+        if abs(right_value - left_value) <= 1e-15:
+            return float(time[index])
+        ratio = (threshold - left_value) / (right_value - left_value)
+        return float(time[index - 1] + ratio * (time[index] - time[index - 1]))
 
-    if low_crossings.size == 0 or high_crossings.size == 0:
+    low_time = crossing_time(low)
+    high_time = crossing_time(high)
+    if low_time is None or high_time is None or high_time < low_time:
         return None
-    high_index = int(high_crossings[0])
-    low_candidates = low_crossings[low_crossings <= high_index]
-    if low_candidates.size == 0:
-        return None
-    return float(time[high_index] - time[int(low_candidates[0])])
+    return high_time - low_time
 
 
 def _error_integrals(
@@ -132,20 +148,42 @@ def compute_quality_metrics(
         else:
             reference = None if reference_input is None else float(reference_input)
 
+        if isinstance(reference, np.ndarray) and (
+            reference.shape != values.shape or not np.all(np.isfinite(reference))
+        ):
+            metrics[label] = _empty_metrics(settling_band)
+            continue
+        if isinstance(reference, np.ndarray):
+            target_value = float(reference[-1])
+            target_source = "reference_series_final"
+        elif reference is not None:
+            target_value = float(reference)
+            target_source = "reference"
+        else:
+            target_value = final_value
+            target_source = "last_sample_estimate"
+
         steady_state_error, iae, ise = _error_integrals(time_values, values, reference)
+        if isinstance(reference, np.ndarray):
+            reference_summary: float | str | None = "provided"
+        else:
+            reference_summary = _finite_or_none(reference)
         metrics[label] = {
             "final_value": _finite_or_none(final_value),
+            "target_value": _finite_or_none(target_value),
+            "target_source": target_source,
+            "min_value": _finite_or_none(float(np.min(values))),
             "max_value": _finite_or_none(float(np.max(values))),
-            "overshoot_percent": _finite_or_none(_overshoot_percent(values, final_value)),
+            "overshoot_percent": _finite_or_none(_overshoot_percent(values, target_value)),
             "settling_time": _finite_or_none(
-                _settling_time(time_values, values, final_value, settling_band)
+                _settling_time(time_values, values, target_value, settling_band)
             ),
-            "rise_time": _finite_or_none(_rise_time(time_values, values, final_value)),
+            "rise_time": _finite_or_none(_rise_time(time_values, values, target_value)),
             "steady_state_error": _finite_or_none(steady_state_error),
             "integral_absolute_error": _finite_or_none(iae),
             "integral_squared_error": _finite_or_none(ise),
             "settling_band_percent": settling_band * 100.0,
-            "reference": None if reference is None else "provided",
+            "reference": reference_summary,
         }
 
     return metrics

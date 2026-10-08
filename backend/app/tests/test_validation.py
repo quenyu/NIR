@@ -4,6 +4,7 @@ from app.models.diagram import Diagram
 from app.tests.helpers import (
     closed_loop_dynamic_diagram,
     deep_copy_diagram,
+    first_order_step_diagram,
     integrator_step_diagram,
 )
 from app.validation.validator import validate_diagram
@@ -29,6 +30,18 @@ def test_invalid_parameter_detected() -> None:
 
     errors = validate_diagram(diagram)
     assert any("Параметр 'T' должен быть больше 0." in message for message in errors)
+
+
+def test_non_finite_numeric_parameter_is_rejected() -> None:
+    diagram_dict = deep_copy_diagram(closed_loop_dynamic_diagram())
+    for block in diagram_dict["blocks"]:
+        if block["id"] == "lag1":
+            block["parameters"]["k"] = "nan"
+    diagram = Diagram.model_validate(diagram_dict)
+
+    errors = validate_diagram(diagram)
+
+    assert any("Параметр 'k' должен быть конечным числом." in message for message in errors)
 
 
 def test_invalid_block_type_detected() -> None:
@@ -91,3 +104,28 @@ def test_feedback_loop_with_dynamic_element_is_valid() -> None:
     diagram = Diagram.model_validate(closed_loop_dynamic_diagram())
     errors = validate_diagram(diagram)
     assert errors == []
+
+
+def test_duplicate_scope_labels_are_rejected() -> None:
+    raw = first_order_step_diagram()
+    raw["blocks"].append(
+        {
+            "id": "scope2",
+            "type": "Scope",
+            "parameters": {"label": "y"},
+            "input_ports": ["in"],
+            "output_ports": [],
+        }
+    )
+    raw["connections"].append(
+        {
+            "from_block": "lag1",
+            "from_port": "out",
+            "to_block": "scope2",
+            "to_port": "in",
+        }
+    )
+
+    errors = validate_diagram(Diagram.model_validate(raw))
+
+    assert any("одинаковое имя сигнала 'y'" in error for error in errors)

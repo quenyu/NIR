@@ -1,0 +1,76 @@
+:root {
+  color-scheme: dark;
+
+  /* Axiom / terminal at midnight */
+  --color-void: #000000;
+  --color-carbon: #111111;
+  --color-graphite: #191919;
+  --color-iron: #202020;
+  --color-slate: #3a3a3a;
+  --color-pewter: #505050;
+  --color-steel: #606060;
+  --color-ash: #7e7e7e;
+  --color-fog: #b4b4b4;
+  --color-chalk: #d9d9d9;
+  --color-paper: #eeeeee;
+  --color-ember: #da5c2c;
+
+  /* Compatibility aliases used by the application components. */
+  --bg: var(--color-void);
+  --bg-raised: #080808;
+  --surface: var(--color-carbon);
+  --surface-soft: var(--color-graphite);
+  --surface-strong: var(--color-iron);
+  --surface-high: #262626;
+  --canvas: var(--color-void);
+  --text: var(--color-paper);
+  --text-soft: var(--color-fog);
+  --text-muted: var(--color-ash);
+  --border: var(--color-iron);
+  --border-strong: var(--color-slate);
+  --border-focus: var(--color-pewter);
+  --accent: var(--color-ember);
+  --accent-strong: #ef7140;
+  --accent-ink: #070707;
+  --accent-soft: rgba(218, 92, 44, 0.11);
+  --success: var(--color-chalk);
+  --success-soft: rgba(217, 217, 217, 0.07);
+  --warning: var(--color-fog);
+  --warning-soft: rgba(180, 180, 180, 0.08);
+  --danger: var(--color-fog);
+  --danger-soft: rgba(180, 180, 180, 0.07);
+  --data-secondary: var(--color-chalk);
+  --data-tertiary: var(--color-ash);
+
+  --shadow-float: none;
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --radius-control: 2px;
+  --radius-panel: 2px;
+  --radius-dialog: 2px;
+
+  --font-berkeley: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  --font-ui: var(--font-berkeley);
+  --font-display: var(--font-berkeley);
+  --font-mono: var(--font-berkeley);
+
+  --type-micro: 12px;
+  --type-caption: 12px;
+  --type-small: 13px;
+  --type-ui: 14px;
+  --type-body: 14px;
+  --type-subtitle: 18px;
+  --type-heading: 20px;
+  --type-metric: 20px;
+  --type-title: 20px;
+  --type-display: 32px;
+  --leading-tight: 1.3;
+  --leading-ui: 1.5;
+  --leading-body: 1.6;
+
+  --header-height: 56px;
+  --rail-width: 56px;
+  --library-width: 344px;
+  --inspector-width: 408px;
+  --motion-fast: 100ms;
+  --motion-normal: 160ms;
+}

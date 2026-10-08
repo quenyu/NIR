@@ -4,203 +4,116 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ChangeEvent,
   type DragEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   ConnectionLineType,
   Controls,
-  MarkerType,
   MiniMap,
   addEdge,
   type Connection,
   type DefaultEdgeOptions,
   type Edge,
-  type Node,
+  type Viewport,
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
   useUpdateNodeInternals,
-  useReactFlow
+  useReactFlow,
 } from "reactflow";
-import { simulateDiagram, SimulationApiError, validateDiagram } from "../api/client";
-import { BlockPalette } from "../components/BlockPalette";
-import { ErrorPanel } from "../components/ErrorPanel";
-import { ParameterEditor } from "../components/ParameterEditor";
-import { SimulationChart } from "../components/SimulationChart";
-import { BlockNode } from "../nodes/BlockNode";
-import { EXAMPLE_PRESETS, type ExamplePreset } from "./examples";
-import type { SimulationResponse } from "../types/api";
 import {
-  blockTypeLabel,
+  simulateDiagram,
+  SimulationApiError,
+  tunePidController,
+  validateDiagram,
+} from "../api/client";
+import {
+  MAX_PROJECT_FILE_SIZE_BYTES,
+  ProjectFileError,
+  createDiagramProject,
+  downloadDiagramProject,
+  parseDiagramProjectJson,
+} from "../features/diagramPersistence";
+import { BlockPalette } from "../components/BlockPalette";
+import {
+  DiagnosticsPanel,
+  type DiagnosticIssue as PanelDiagnosticIssue,
+  type DiagnosticProgressItem,
+  type DiagnosticResult,
+  type DiagnosticsRunState,
+  type DiagnosticsTab,
+} from "../components/DiagnosticsPanel";
+import { ParameterEditor } from "../components/ParameterEditor";
+import { SimulationChart, type ScopeTab } from "../components/SimulationChart";
+import { ServerProjectsModal } from "../components/ServerProjectsModal";
+import { UiIcon } from "../components/UiIcon";
+import {
+  WorkspaceInspector,
+  type InspectorView,
+} from "../components/workspace/WorkspaceInspector";
+import { WorkspaceChrome, type WorkspaceMode } from "../components/workspace/WorkspaceChrome";
+import { WorkspaceRail } from "../components/workspace/WorkspaceRail";
+import { FeedbackEdge, SignalEdge } from "../components/DiagramEdges";
+import {
+  createServerProject,
+  getServerProject,
+  updateServerProject,
+  type ServerProjectPayload,
+} from "../api/projects";
+import { BlockNode } from "../nodes/BlockNode";
+import { layoutDiagram } from "../features/diagramLayout";
+import {
+  diagnoseDiagram,
+  diagnoseFlowModel,
+  type ModelDiagnosticIssue,
+} from "../features/modelDiagnostics";
+import { routeDiagramEdges } from "../features/edgeRouting";
+import {
+  blockedSumInputMessage,
+  defaultPosition,
+  diagnosticTitle,
+  diagramFromFlow,
+  diagramHasCycle,
+  edgesFromDiagram,
+  formatValidationMessage,
+  freeNodePosition,
+  normalizeNodePositions,
+  positionsFromNodes,
+  positionsFromSubsystemParameters,
+  toNode,
+  type DiagramNode,
+} from "../features/modelingWorkspace";
+import { EXAMPLE_PRESETS, STARTER_PRESETS, type ExamplePreset } from "./examples";
+import type { PIDTuneResponse, SimulationResponse } from "../types/api";
+import {
   defaultParametersFor,
   inputPortsFor,
   isBlockType,
   outputPortsFor,
+  subsystemDiagram,
+  subsystemDisplayName,
   type BlockNodeData,
   type BlockType,
   type Diagram,
-  type DiagramBlock
 } from "../types/diagram";
 
 const NODE_TYPES = { block: BlockNode };
-type DiagramNode = Node<BlockNodeData>;
-const EDGE_TYPE = "smoothstep" as const;
-const EDGE_PATH_OPTIONS = { offset: 36, borderRadius: 12 };
-const FEEDBACK_EDGE_PATH_OPTIONS = { offset: 96, borderRadius: 12 };
+const EDGE_TYPES = { signal: SignalEdge, feedback: FeedbackEdge };
+interface HierarchyFrame {
+  subsystemId: string;
+  subsystemLabel: string;
+  parentNodes: DiagramNode[];
+  parentEdges: Edge[];
+  parentNodeCounter: number;
+  parentViewport: Viewport;
+}
 const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
-  type: EDGE_TYPE,
-  markerEnd: { type: MarkerType.ArrowClosed }
+  type: "signal",
 };
-
-function defaultPosition(index: number): { x: number; y: number } {
-  return { x: 80 + (index % 3) * 220, y: 100 + Math.floor(index / 3) * 130 };
-}
-
-function toNode(block: DiagramBlock, position: { x: number; y: number }): DiagramNode {
-  return {
-    id: block.id,
-    type: "block",
-    position,
-    data: {
-      blockId: block.id,
-      blockType: block.type,
-      parameters: block.parameters,
-      inputPorts: block.input_ports,
-      outputPorts: block.output_ports
-    }
-  };
-}
-
-function isFeedbackByPosition(
-  source: string,
-  target: string,
-  positions: Record<string, { x: number; y: number }>
-): boolean {
-  const sourcePosition = positions[source];
-  const targetPosition = positions[target];
-  return Boolean(sourcePosition && targetPosition && sourcePosition.x > targetPosition.x);
-}
-
-function edgeClassName(isFeedback: boolean): string | undefined {
-  return isFeedback ? "feedback-edge" : undefined;
-}
-
-function edgeDataWithKind(data: Edge["data"], isFeedback: boolean): Edge["data"] {
-  if (isFeedback) {
-    return { ...(data ?? {}), kind: "feedback" };
-  }
-  if (!data || typeof data !== "object" || !("kind" in data)) {
-    return data;
-  }
-  const { kind: _kind, ...rest } = data as Record<string, unknown>;
-  return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
-function routeEdge(edge: Edge, positions: Record<string, { x: number; y: number }>): Edge {
-  const isFeedback = isFeedbackByPosition(edge.source, edge.target, positions);
-  return {
-    ...edge,
-    type: EDGE_TYPE,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    className: edgeClassName(isFeedback),
-    data: edgeDataWithKind(edge.data, isFeedback),
-    pathOptions: isFeedback ? FEEDBACK_EDGE_PATH_OPTIONS : EDGE_PATH_OPTIONS
-  };
-}
-
-function edgesFromDiagram(
-  diagram: Diagram,
-  positions: Record<string, { x: number; y: number }>
-): Edge[] {
-  return diagram.connections.map((connection, index) =>
-    routeEdge(
-      {
-        id: `edge-${index}-${connection.from_block}-${connection.to_block}`,
-        source: connection.from_block,
-        sourceHandle: connection.from_port,
-        target: connection.to_block,
-        targetHandle: connection.to_port
-      },
-      positions
-    )
-  );
-}
-
-function positionsFromNodes(nodes: DiagramNode[]): Record<string, { x: number; y: number }> {
-  return Object.fromEntries(nodes.map((node) => [node.id, node.position]));
-}
-
-function diagramHasCycle(diagram: Diagram): boolean {
-  const adjacency = new Map<string, string[]>();
-  for (const block of diagram.blocks) {
-    adjacency.set(block.id, []);
-  }
-  for (const connection of diagram.connections) {
-    adjacency.get(connection.from_block)?.push(connection.to_block);
-  }
-
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-
-  function visit(blockId: string): boolean {
-    if (visiting.has(blockId)) {
-      return true;
-    }
-    if (visited.has(blockId)) {
-      return false;
-    }
-    visiting.add(blockId);
-    for (const nextBlockId of adjacency.get(blockId) ?? []) {
-      if (visit(nextBlockId)) {
-        return true;
-      }
-    }
-    visiting.delete(blockId);
-    visited.add(blockId);
-    return false;
-  }
-
-  return diagram.blocks.some((block) => visit(block.id));
-}
-
-function formatValidationMessage(message: string): string {
-  const normalized = message.toLowerCase();
-  if (
-    normalized.includes("algebraic") ||
-    normalized.includes("cycle") ||
-    normalized.includes("loop") ||
-    normalized.includes("direct-feedthrough") ||
-    normalized.includes("алгебра") ||
-    normalized.includes("петл")
-  ) {
-    return "Алгебраическая петля: в цикле нет динамического блока или есть direct-feedthrough зависимость.";
-  }
-  return message;
-}
-
-function blockedSumInputMessage(portName: string): string {
-  return `Нельзя удалить вход Sum.${portName}: к нему подключена связь.`;
-}
-
-function diagramFromFlow(nodes: DiagramNode[], edges: Edge[]): Diagram {
-  return {
-    blocks: nodes.map((node) => ({
-      id: node.id,
-      type: node.data.blockType,
-      parameters: node.data.parameters,
-      input_ports: node.data.inputPorts,
-      output_ports: node.data.outputPorts
-    })),
-    connections: edges.map((edge) => ({
-      from_block: edge.source,
-      from_port: edge.sourceHandle ?? "out",
-      to_block: edge.target,
-      to_port: edge.targetHandle ?? "in"
-    }))
-  };
-}
 
 function ModelingWorkspace() {
   const [nodes, setNodes, onNodesChange] = useNodesState<BlockNodeData>([]);
@@ -213,23 +126,83 @@ function ModelingWorkspace() {
   const [tEnd, setTEnd] = useState<number>(6);
   const [dt, setDt] = useState<number>(0.01);
   const [isBusy, setIsBusy] = useState(false);
+  const [diagnosticsState, setDiagnosticsState] = useState<DiagnosticsRunState>("idle");
+  const [diagnosticsTab, setDiagnosticsTab] = useState<DiagnosticsTab>("issues");
+  const [diagnosticsIssues, setDiagnosticsIssues] = useState<ModelDiagnosticIssue[]>([]);
+  const [diagnosticsProgress, setDiagnosticsProgress] = useState<DiagnosticProgressItem[]>([]);
+  const [isDiagnosticsCollapsed, setIsDiagnosticsCollapsed] = useState(true);
+  const [isArranging, setIsArranging] = useState(false);
+  const [isTuning, setIsTuning] = useState(false);
+  const [pidTuningResult, setPidTuningResult] = useState<PIDTuneResponse | null>(null);
   const [isParameterModalOpen, setIsParameterModalOpen] = useState(false);
-  const [scopeHeightPx, setScopeHeightPx] = useState(560);
+  const [scopeHeightPx, setScopeHeightPx] = useState(400);
+  const [isScopeOpen, setIsScopeOpen] = useState(false);
+  const [scopeTab, setScopeTab] = useState<ScopeTab>("plot");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("editor");
+  const [isDefenseGuideVisible, setIsDefenseGuideVisible] = useState(false);
   const [isResizingScope, setIsResizingScope] = useState(false);
+  const [inspectorView, setInspectorView] = useState<InspectorView>("simulation");
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(true);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [nodeCounter, setNodeCounter] = useState(1);
+  const [hierarchyStack, setHierarchyStack] = useState<HierarchyFrame[]>([]);
+  const [isServerProjectsOpen, setIsServerProjectsOpen] = useState(false);
+  const [serverProjectId, setServerProjectId] = useState<string | null>(null);
+  const [serverProjectVersion, setServerProjectVersion] = useState<number | null>(null);
+  const [serverProjectTitle, setServerProjectTitle] = useState<string>("");
   const modelingMainRef = useRef<HTMLElement | null>(null);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const libraryPaneRef = useRef<HTMLElement | null>(null);
+  const nodeClickTimerRef = useRef<number | null>(null);
+  const initialExampleLoadedRef = useRef(false);
+  const modelRevisionRef = useRef("");
+  const { screenToFlowPosition, fitView, getViewport, setViewport, getNode, setCenter } =
+    useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
 
+  useEffect(() => () => {
+    if (nodeClickTimerRef.current !== null) window.clearTimeout(nodeClickTimerRef.current);
+  }, []);
+
   const modelingMainStyle = useMemo(
-    () => ({ ["--scope-height" as string]: `${scopeHeightPx}px` }) as CSSProperties,
-    [scopeHeightPx]
+    () =>
+      ({ ["--scope-height" as string]: `${scopeHeightPx}px` }) as CSSProperties,
+    [scopeHeightPx],
   );
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId)?.data ?? null,
-    [nodes, selectedNodeId]
+    [nodes, selectedNodeId],
   );
+
+  const hierarchyPath = useMemo(
+    () => [
+      { depth: 0, label: "Главная схема" },
+      ...hierarchyStack.map((frame, index) => ({
+        depth: index + 1,
+        label: frame.subsystemLabel,
+      })),
+    ],
+    [hierarchyStack],
+  );
+
+  const hiddenHierarchyParts = useMemo(
+    () => (hierarchyPath.length > 4 ? hierarchyPath.slice(1, -2) : []),
+    [hierarchyPath],
+  );
+
+  const visibleHierarchyParts = useMemo(
+    () => (hierarchyPath.length > 4 ? [hierarchyPath[0], ...hierarchyPath.slice(-2)] : hierarchyPath),
+    [hierarchyPath],
+  );
+
+  const currentLevelTitle =
+    hierarchyStack[hierarchyStack.length - 1]?.subsystemLabel ?? "Главная схема";
+
+  const selectedNodeTitle = selectedNode
+    ? selectedNode.blockType === "Subsystem"
+      ? subsystemDisplayName(selectedNode.parameters, selectedNode.blockId)
+      : selectedNode.blockId
+    : "";
 
   const selectedConnectedInputPorts = useMemo(() => {
     if (!selectedNodeId) {
@@ -242,25 +215,201 @@ function ModelingWorkspace() {
 
   const nodePositions = useMemo(
     () => positionsFromNodes(nodes as DiagramNode[]),
-    [nodes]
+    [nodes],
   );
 
+  const edgeTopologyKey = useMemo(
+    () => edges
+      .map((edge) => `${edge.id}:${edge.source}:${edge.sourceHandle ?? "out"}:${edge.target}:${edge.targetHandle ?? "in"}`)
+      .join("|"),
+    [edges],
+  );
+
+  const modelRevisionKey = useMemo(
+    () => JSON.stringify({
+      nodes: nodes.map((node) => ({
+        id: node.id,
+        type: node.data.blockType,
+        parameters: node.data.parameters,
+        inputPorts: node.data.inputPorts,
+        outputPorts: node.data.outputPorts,
+      })),
+      edges: edges.map((edge) => ({
+        source: edge.source,
+        sourceHandle: edge.sourceHandle ?? "out",
+        target: edge.target,
+        targetHandle: edge.targetHandle ?? "in",
+      })),
+    }),
+    [edges, nodes],
+  );
+
+  const visibleNodeIds = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
+
+  const panelIssues = useMemo<PanelDiagnosticIssue[]>(() => {
+    const mapped = diagnosticsIssues.map<PanelDiagnosticIssue>((issue) => {
+      const visibleBlockId = issue.scopePath.find((id) => visibleNodeIds.has(id))
+        ?? issue.nodeIds?.find((id) => visibleNodeIds.has(id))
+        ?? (issue.nodeId && visibleNodeIds.has(issue.nodeId) ? issue.nodeId : undefined);
+      const path = [...issue.scopePath, issue.nodeId].filter(Boolean).join(" / ");
+      return {
+        id: issue.id,
+        severity: issue.severity,
+        title: diagnosticTitle(issue),
+        message: issue.message,
+        blockId: visibleBlockId,
+        blockLabel: path || undefined,
+      };
+    });
+    const knownMessages = new Set(diagnosticsIssues.map((issue) => issue.message));
+    errors.forEach((message, index) => {
+      if (!knownMessages.has(message)) {
+        mapped.push({
+          id: `operation-error-${index}`,
+          severity: "error",
+          title: "Ошибка операции",
+          message,
+        });
+      }
+    });
+    return mapped;
+  }, [diagnosticsIssues, errors, visibleNodeIds]);
+
+  const diagnosticSeverityByNode = useMemo(() => {
+    const rank = { info: 0, warning: 1, error: 2 } as const;
+    const resultByNode = new Map<string, "warning" | "error">();
+    diagnosticsIssues.forEach((issue) => {
+      const severity = issue.severity;
+      if (severity === "info") {
+        return;
+      }
+      const candidates = [
+        ...issue.scopePath,
+        ...(issue.nodeIds ?? []),
+        ...(issue.nodeId ? [issue.nodeId] : []),
+      ];
+      candidates.forEach((nodeId) => {
+        if (!visibleNodeIds.has(nodeId)) {
+          return;
+        }
+        const current = resultByNode.get(nodeId);
+        if (!current || rank[severity] > rank[current]) {
+          resultByNode.set(nodeId, severity);
+        }
+      });
+    });
+    return resultByNode;
+  }, [diagnosticsIssues, visibleNodeIds]);
+
+  const renderedNodes = useMemo(
+    () => nodes.map((node) => {
+      const severity = diagnosticSeverityByNode.get(node.id);
+      return {
+        ...node,
+        className: [node.className, severity ? `has-diagnostic-${severity}` : undefined]
+          .filter(Boolean)
+          .join(" "),
+      };
+    }),
+    [diagnosticSeverityByNode, nodes],
+  );
+
+  const diagnosticResults = useMemo<DiagnosticResult[]>(() => {
+    if (!result?.success) {
+      return [];
+    }
+    const stability = result.system_analysis?.stability
+      ?? result.stability_analysis?.overall_status
+      ?? "не определена";
+    const stabilityTone = /unstable|неуст/i.test(String(stability)) ? "danger" : "success";
+    return [
+      { id: "signals", label: "Сигналы", value: Object.keys(result.outputs ?? {}).length },
+      { id: "points", label: "Точек расчёта", value: result.time?.length ?? 0 },
+      { id: "states", label: "Размерность x", value: result.system_analysis?.state_dimension ?? "—" },
+      { id: "stability", label: "Устойчивость", value: String(stability), tone: stabilityTone },
+    ];
+  }, [result]);
+
+  const effectiveDiagnosticsState: DiagnosticsRunState =
+    diagnosticsState === "idle" && errors.length > 0 ? "error" : diagnosticsState;
+
+  const runButtonLabel = diagnosticsState === "validating"
+    ? "Проверяю схему"
+    : diagnosticsState === "running"
+      ? "Выполняется расчёт"
+      : diagnosticsState === "error"
+        ? "Проверить снова"
+        : result?.success
+          ? "Запустить снова"
+          : "Запустить модель";
+
   useEffect(() => {
-    setEdges((current) => current.map((edge) => routeEdge(edge, nodePositions)));
-  }, [nodePositions, setEdges]);
+    if (initialExampleLoadedRef.current || typeof window === "undefined") {
+      return;
+    }
+    initialExampleLoadedRef.current = true;
+    const exampleId = new URLSearchParams(window.location.search).get("example");
+    const preset = EXAMPLE_PRESETS.find((candidate) => candidate.id === exampleId);
+    if (preset) {
+      applyPreset(preset);
+    }
+  }, []);
+
+  useEffect(() => {
+    setEdges((current) =>
+      routeDiagramEdges(current, nodePositions),
+    );
+  }, [edgeTopologyKey, nodePositions, setEdges]);
+
+  useEffect(() => {
+    const previousRevision = modelRevisionRef.current;
+    modelRevisionRef.current = modelRevisionKey;
+    if (!previousRevision || previousRevision === modelRevisionKey) {
+      return;
+    }
+    if (
+      diagnosticsState !== "idle" ||
+      diagnosticsIssues.length > 0 ||
+      errors.length > 0 ||
+      result
+    ) {
+      setDiagnosticsState("idle");
+      setDiagnosticsIssues([]);
+      setDiagnosticsProgress([]);
+      setDiagnosticsTab("issues");
+      setIsDiagnosticsCollapsed(true);
+      setResult(null);
+      setErrors([]);
+      setIsScopeOpen(false);
+      setScopeTab("plot");
+      setWorkspaceMode("editor");
+    }
+  }, [diagnosticsIssues.length, diagnosticsState, errors.length, modelRevisionKey, result]);
 
   useEffect(() => {
     function onKeydown(event: KeyboardEvent) {
       if (event.key !== "Delete" || !selectedNodeId) {
         return;
       }
-      setNodes((current) => current.filter((node) => node.id !== selectedNodeId));
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      setNodes((current) =>
+        current.filter((node) => node.id !== selectedNodeId),
+      );
       setEdges((current) =>
         current.filter(
-          (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId
-        )
+          (edge) =>
+            edge.source !== selectedNodeId && edge.target !== selectedNodeId,
+        ),
       );
       setSelectedNodeId(null);
+      setInspectorView("simulation");
+      setIsInspectorOpen(false);
       setIsParameterModalOpen(false);
     }
     window.addEventListener("keydown", onKeydown);
@@ -276,7 +425,10 @@ function ModelingWorkspace() {
       const minScope = 280;
       const minCanvas = 240;
       const splitter = 14;
-      const maxScope = Math.max(minScope, containerHeight - minCanvas - splitter);
+      const maxScope = Math.max(
+        minScope,
+        containerHeight - minCanvas - splitter,
+      );
       return Math.min(maxScope, Math.max(minScope, value));
     }
 
@@ -317,45 +469,107 @@ function ModelingWorkspace() {
     window.dispatchEvent(new Event("resize"));
   }, [scopeHeightPx, isResizingScope]);
 
+  useEffect(() => {
+    if (result?.success || errors.length > 0) {
+      setIsScopeOpen(true);
+    }
+  }, [errors.length, result?.success]);
+
   function startScopeResize(event: ReactMouseEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsResizingScope(true);
   }
 
+  function openWorkspaceMode(mode: WorkspaceMode) {
+    setWorkspaceMode(mode);
+    if (mode === "editor") {
+      setScopeTab("plot");
+      setIsScopeOpen(false);
+      return;
+    }
+    setScopeTab(mode);
+    setScopeHeightPx((current) => Math.max(current, 560));
+    setIsScopeOpen(true);
+    setIsLibraryCollapsed(true);
+    setIsInspectorOpen(false);
+  }
+
   function addBlock(type: BlockType, position?: { x: number; y: number }) {
-    const id = `${type}-${nodeCounter}`;
-    setNodeCounter((value) => value + 1);
+    let counter = nodeCounter;
+    let id = `${type}-${counter}`;
+    const existingIds = new Set(nodes.map((node) => node.id));
+    while (existingIds.has(id)) {
+      counter += 1;
+      id = `${type}-${counter}`;
+    }
+    setNodeCounter(counter + 1);
     const parameters = defaultParametersFor(type);
+    if (type === "SubsystemInput" || type === "SubsystemOutput") {
+      const prefix = type === "SubsystemInput" ? "in" : "out";
+      const usedPorts = new Set(
+        nodes
+          .filter((node) => node.data.blockType === type)
+          .map((node) => String(node.data.parameters.port ?? "")),
+      );
+      let portIndex = 1;
+      let portName = prefix;
+      while (usedPorts.has(portName)) {
+        portIndex += 1;
+        portName = `${prefix}${portIndex}`;
+      }
+      parameters.port = portName;
+    }
     const inputPorts = inputPortsFor(type, parameters);
-    const outputPorts = outputPortsFor(type);
+    const outputPorts = outputPortsFor(type, parameters);
+    const data: BlockNodeData = {
+      blockId: id,
+      blockType: type,
+      parameters,
+      inputPorts,
+      outputPorts,
+    };
+    const sourcePosition = position ?? defaultPosition(nodes.length);
+    const requestedPosition = {
+      x: Math.round(sourcePosition.x / 8) * 8,
+      y: Math.round(sourcePosition.y / 8) * 8,
+    };
     const node: DiagramNode = {
       id,
       type: "block",
-      position: position ?? defaultPosition(nodes.length),
-      data: {
-        blockId: id,
-        blockType: type,
-        parameters,
-        inputPorts,
-        outputPorts
-      }
+      position: freeNodePosition(nodes as DiagramNode[], requestedPosition, data),
+      data,
     };
     setNodes((current) => [...current, node]);
   }
 
   function applyPreset(preset: ExamplePreset) {
-    const loadedNodes = preset.diagram.blocks.map((block, index) =>
-      toNode(block, preset.positions[block.id] ?? defaultPosition(index))
+    const loadedNodes = normalizeNodePositions(
+      preset.diagram.blocks.map((block, index) =>
+        toNode(block, preset.positions[block.id] ?? defaultPosition(index)),
+      ),
     );
+    const positions = positionsFromNodes(loadedNodes);
     setNodes(loadedNodes);
-    setEdges(edgesFromDiagram(preset.diagram, preset.positions));
+    setEdges(edgesFromDiagram(preset.diagram, positions));
     setNodeCounter(loadedNodes.length + 1);
     setSelectedNodeId(null);
+    setInspectorView("simulation");
+    setIsInspectorOpen(false);
+    setIsLibraryCollapsed(true);
     setErrors([]);
     setInfo(`Загружен пример: ${preset.title}`);
     setResult(null);
+    setIsScopeOpen(false);
+    setScopeTab("plot");
+    setWorkspaceMode("editor");
+    setIsDefenseGuideVisible(preset.id === "defenseDemo");
+    setHierarchyStack([]);
+    setServerProjectId(null);
+    setServerProjectVersion(null);
+    setServerProjectTitle("");
+    libraryPaneRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => {
-      void fitView({ padding: 0.2, duration: 250 });
+      void fitView({ padding: 0.1, duration: 250, maxZoom: 1 });
     }, 0);
   }
 
@@ -365,11 +579,13 @@ function ModelingWorkspace() {
     }
     const targetHandle = connection.targetHandle ?? "in";
     const occupied = edges.some(
-      (edge) => edge.target === connection.target && (edge.targetHandle ?? "in") === targetHandle
+      (edge) =>
+        edge.target === connection.target &&
+        (edge.targetHandle ?? "in") === targetHandle,
     );
     if (occupied) {
       setErrors([
-        `Вход ${connection.target}.${targetHandle} уже имеет связь. Один вход может иметь только один источник.`
+        `Вход ${connection.target}.${targetHandle} уже имеет связь. Один вход может иметь только один источник.`,
       ]);
       setInfo("");
       return;
@@ -380,9 +596,45 @@ function ModelingWorkspace() {
       target: connection.target,
       sourceHandle: connection.sourceHandle ?? "out",
       targetHandle,
-      id: `edge-${connection.source}-${connection.target}-${Date.now()}`
+      id: `edge-${connection.source}-${connection.target}-${Date.now()}`,
     };
-    setEdges((current) => addEdge(routeEdge(edge, nodePositions), current));
+    setEdges((current) =>
+      routeDiagramEdges(addEdge(edge, current), nodePositions),
+    );
+  }
+
+  async function arrangeCurrentDiagram() {
+    if (nodes.length < 2) {
+      setInfo("Для упорядочивания добавьте минимум два блока.");
+      return;
+    }
+
+    setIsArranging(true);
+    setErrors([]);
+    try {
+      const routedEdges = routeDiagramEdges(edges, nodePositions);
+      const positions = await layoutDiagram(nodes as DiagramNode[], routedEdges);
+      setNodes((current) => current.map((node) => ({
+        ...node,
+        position: positions[node.id] ?? node.position,
+      })));
+      setEdges((current) => routeDiagramEdges(current, positions));
+      setInfo("Схема упорядочена: основной сигнал слева направо, обратные связи — по нижним полосам.");
+      window.requestAnimationFrame(() => {
+        nodes.forEach((node) => updateNodeInternals(node.id));
+        window.requestAnimationFrame(() => {
+          void fitView({ padding: 0.1, duration: 300, maxZoom: 1 });
+        });
+      });
+    } catch (layoutError) {
+      setErrors([
+        layoutError instanceof Error
+          ? `Не удалось упорядочить схему: ${layoutError.message}`
+          : "Не удалось упорядочить схему.",
+      ]);
+    } finally {
+      setIsArranging(false);
+    }
   }
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
@@ -392,11 +644,16 @@ function ModelingWorkspace() {
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
-    const droppedType = event.dataTransfer.getData("application/nir-block-type");
+    const droppedType = event.dataTransfer.getData(
+      "application/nir-block-type",
+    );
     if (!isBlockType(droppedType)) {
       return;
     }
-    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const position = screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
     addBlock(droppedType, position);
   }
 
@@ -413,11 +670,11 @@ function ModelingWorkspace() {
 
     const nextParameters = { ...node.data.parameters, ...updates };
     const nextInputPorts = inputPortsFor(node.data.blockType, nextParameters);
-    const nextOutputPorts = outputPortsFor(node.data.blockType);
+    const nextOutputPorts = outputPortsFor(node.data.blockType, nextParameters);
     const blockedInputEdge = edges.find(
       (edge) =>
         edge.target === selectedId &&
-        !nextInputPorts.includes(edge.targetHandle ?? "in")
+        !nextInputPorts.includes(edge.targetHandle ?? "in"),
     );
 
     if (node.data.blockType === "Sum" && blockedInputEdge?.targetHandle) {
@@ -426,7 +683,8 @@ function ModelingWorkspace() {
       return;
     }
 
-    const inputCountChanged = node.data.inputPorts.length !== nextInputPorts.length;
+    const inputCountChanged =
+      node.data.inputPorts.length !== nextInputPorts.length;
 
     setNodes((current) =>
       current.map((currentNode) => {
@@ -439,10 +697,10 @@ function ModelingWorkspace() {
             ...currentNode.data,
             parameters: nextParameters,
             inputPorts: nextInputPorts,
-            outputPorts: nextOutputPorts
-          }
+            outputPorts: nextOutputPorts,
+          },
         };
-      })
+      }),
     );
 
     setEdges((current) => {
@@ -465,65 +723,646 @@ function ModelingWorkspace() {
       });
     });
 
-    if (node.data.blockType === "Sum" && inputCountChanged) {
+    if ((node.data.blockType === "Sum" || node.data.blockType === "Subsystem") && inputCountChanged) {
       window.setTimeout(() => updateNodeInternals(selectedId), 0);
     }
   }
 
+  function diagramWithCurrentHierarchy(): Diagram {
+    let currentDiagram = diagramFromFlow(nodes as DiagramNode[], edges);
+    for (let index = hierarchyStack.length - 1; index >= 0; index -= 1) {
+      const frame = hierarchyStack[index];
+      const parentNodes = frame.parentNodes.map((parentNode) => {
+        if (parentNode.id !== frame.subsystemId) {
+          return parentNode;
+        }
+        const parameters = {
+          ...parentNode.data.parameters,
+          diagram: currentDiagram,
+        };
+        return {
+          ...parentNode,
+          data: {
+            ...parentNode.data,
+            parameters,
+            inputPorts: inputPortsFor("Subsystem", parameters),
+            outputPorts: outputPortsFor("Subsystem", parameters),
+          },
+        };
+      });
+      currentDiagram = diagramFromFlow(parentNodes, frame.parentEdges);
+    }
+    return currentDiagram;
+  }
+
+  function enterSubsystem(nodeId: string) {
+    const subsystemNode = nodes.find((node) => node.id === nodeId);
+    if (!subsystemNode || subsystemNode.data.blockType !== "Subsystem") {
+      return;
+    }
+    const nested = subsystemDiagram(subsystemNode.data.parameters);
+    if (!nested) {
+      setErrors([`Подсистема ${nodeId} не содержит корректной вложенной схемы.`]);
+      return;
+    }
+    const positions = positionsFromSubsystemParameters(subsystemNode.data.parameters, nested);
+    setHierarchyStack((current) => [
+      ...current,
+      {
+        subsystemId: nodeId,
+        subsystemLabel: subsystemDisplayName(subsystemNode.data.parameters, nodeId),
+        parentNodes: nodes as DiagramNode[],
+        parentEdges: edges,
+        parentNodeCounter: nodeCounter,
+        parentViewport: getViewport(),
+      },
+    ]);
+    const nestedNodes = normalizeNodePositions(
+      nested.blocks.map((block, index) => toNode(block, positions[block.id] ?? defaultPosition(index))),
+    );
+    const normalizedPositions = positionsFromNodes(nestedNodes);
+    setNodes(nestedNodes);
+    setEdges(edgesFromDiagram(nested, normalizedPositions));
+    setNodeCounter(nextCounterForDiagram(nested));
+    setSelectedNodeId(null);
+    setInspectorView("simulation");
+    setIsInspectorOpen(false);
+    setIsParameterModalOpen(false);
+    setResult(null);
+    setIsScopeOpen(false);
+    setDiagnosticsState("idle");
+    setDiagnosticsIssues([]);
+    setDiagnosticsProgress([]);
+    setDiagnosticsTab("issues");
+    setIsDiagnosticsCollapsed(true);
+    setErrors([]);
+    setInfo(`Открыта подсистема ${nodeId}.`);
+    window.setTimeout(() => void fitView({ padding: 0.1, duration: 250, maxZoom: 1 }), 0);
+  }
+
+  function leaveSubsystemToDepth(targetDepth: number) {
+    if (
+      targetDepth < 0 ||
+      targetDepth >= hierarchyStack.length ||
+      hierarchyStack.length === 0
+    ) {
+      return;
+    }
+
+    let childNodes = nodes as DiagramNode[];
+    let childEdges = edges;
+    let childViewport = getViewport();
+    let restoredCounter = nodeCounter;
+
+    for (let index = hierarchyStack.length - 1; index >= targetDepth; index -= 1) {
+      const frame = hierarchyStack[index];
+      const nestedDiagram = diagramFromFlow(childNodes, childEdges);
+      const nestedLayout = {
+        positions: positionsFromNodes(childNodes),
+        viewport: childViewport,
+      };
+      const parentNodes = frame.parentNodes.map((parentNode) => {
+        if (parentNode.id !== frame.subsystemId) {
+          return parentNode;
+        }
+        const parameters = {
+          ...parentNode.data.parameters,
+          diagram: nestedDiagram,
+          layout: nestedLayout,
+        };
+        return {
+          ...parentNode,
+          data: {
+            ...parentNode.data,
+            parameters,
+            inputPorts: inputPortsFor("Subsystem", parameters),
+            outputPorts: outputPortsFor("Subsystem", parameters),
+          },
+        };
+      });
+      const subsystemNode = parentNodes.find((node) => node.id === frame.subsystemId);
+      const allowedInputs = new Set(subsystemNode?.data.inputPorts ?? []);
+      const allowedOutputs = new Set(subsystemNode?.data.outputPorts ?? []);
+      const parentEdges = frame.parentEdges.filter((edge) => {
+        if (edge.target === frame.subsystemId && !allowedInputs.has(edge.targetHandle ?? "in")) return false;
+        if (edge.source === frame.subsystemId && !allowedOutputs.has(edge.sourceHandle ?? "out")) return false;
+        return true;
+      });
+
+      childNodes = parentNodes;
+      childEdges = parentEdges;
+      childViewport = frame.parentViewport;
+      restoredCounter = frame.parentNodeCounter;
+    }
+
+    const selectedSubsystemId = hierarchyStack[targetDepth].subsystemId;
+    setHierarchyStack((current) => current.slice(0, targetDepth));
+    setNodes(childNodes);
+    setEdges(childEdges);
+    setNodeCounter(restoredCounter);
+    setSelectedNodeId(selectedSubsystemId);
+    setInspectorView("block");
+    setIsInspectorOpen(true);
+    setResult(null);
+    setIsScopeOpen(false);
+    setErrors([]);
+    setInfo(`Изменения уровня сохранены. Открыт уровень ${targetDepth}.`);
+    window.setTimeout(() => {
+      void setViewport(childViewport, { duration: 180 });
+      updateNodeInternals(selectedSubsystemId);
+    }, 0);
+  }
+
+  function leaveSubsystem() {
+    leaveSubsystemToDepth(hierarchyStack.length - 1);
+  }
+
+  function nextCounterForDiagram(diagram: Diagram): number {
+    let maximum = 0;
+    for (const block of diagram.blocks) {
+      const match = block.id.match(/(\d+)$/);
+      if (match) {
+        maximum = Math.max(maximum, Number(match[1]));
+      }
+    }
+    return Math.max(diagram.blocks.length + 1, maximum + 1);
+  }
+
+  function saveProjectToJson() {
+    if (nodes.length === 0) {
+      setInfo("");
+      setErrors(["Добавьте хотя бы один блок перед сохранением проекта."]);
+      return;
+    }
+
+    const diagram = diagramWithCurrentHierarchy();
+    const rootNodes = hierarchyStack[0]?.parentNodes ?? (nodes as DiagramNode[]);
+    const rootViewport = hierarchyStack[0]?.parentViewport ?? getViewport();
+    const project = createDiagramProject({
+      diagram,
+      positions: positionsFromNodes(rootNodes),
+      viewport: rootViewport,
+      simulation: {
+        solver,
+        t_start: 0,
+        t_end: tEnd,
+        dt,
+      },
+    });
+    downloadDiagramProject(project);
+    setErrors([]);
+    setInfo("Проект сохранён в JSON-файл.");
+  }
+
+  function currentServerPayload(): ServerProjectPayload {
+    const rootNodes = hierarchyStack[0]?.parentNodes ?? (nodes as DiagramNode[]);
+    const rootViewport = hierarchyStack[0]?.parentViewport ?? getViewport();
+    return {
+      diagram: diagramWithCurrentHierarchy(),
+      layout: {
+        positions: positionsFromNodes(rootNodes),
+        viewport: rootViewport,
+      },
+      simulation: {
+        solver,
+        t_start: 0,
+        t_end: tEnd,
+        dt,
+      },
+    };
+  }
+
+  async function createProjectOnServer(title: string) {
+    setIsBusy(true);
+    setErrors([]);
+    try {
+      const record = await createServerProject(title, currentServerPayload());
+      setServerProjectId(record.id);
+      setServerProjectVersion(record.version);
+      setServerProjectTitle(record.title);
+      setInfo(`Проект «${record.title}» сохранён на сервере, версия ${record.version}.`);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function saveCurrentProjectOnServer() {
+    if (!serverProjectId || serverProjectVersion === null) {
+      setIsServerProjectsOpen(true);
+      return;
+    }
+    setIsBusy(true);
+    setErrors([]);
+    try {
+      const record = await updateServerProject(
+        serverProjectId,
+        serverProjectTitle,
+        currentServerPayload(),
+        serverProjectVersion,
+      );
+      setServerProjectVersion(record.version);
+      setInfo(`Серверный проект обновлён до версии ${record.version}.`);
+    } catch (saveError) {
+      setErrors([saveError instanceof Error ? saveError.message : "Не удалось сохранить проект на сервере."]);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function openProjectFromServer(projectId: string) {
+    setIsBusy(true);
+    setErrors([]);
+    try {
+      const record = await getServerProject(projectId);
+      const { diagram, layout, simulation } = record.payload;
+      const loadedNodes = normalizeNodePositions(
+        diagram.blocks.map((block, index) => toNode(block, layout.positions[block.id] ?? defaultPosition(index))),
+      );
+      const positions = positionsFromNodes(loadedNodes);
+      setNodes(loadedNodes);
+      setEdges(edgesFromDiagram(diagram, positions));
+      setNodeCounter(nextCounterForDiagram(diagram));
+      setHierarchyStack([]);
+      setSelectedNodeId(null);
+      setInspectorView("simulation");
+      setIsInspectorOpen(false);
+      setResult(null);
+      setIsScopeOpen(false);
+      setScopeTab("plot");
+      setWorkspaceMode("editor");
+      setIsDefenseGuideVisible(false);
+      setSolver(simulation.solver);
+      setTEnd(simulation.t_end);
+      setDt(simulation.dt);
+      setServerProjectId(record.id);
+      setServerProjectVersion(record.version);
+      setServerProjectTitle(record.title);
+      setIsServerProjectsOpen(false);
+      setInfo(`Открыт серверный проект «${record.title}», версия ${record.version}.`);
+      window.setTimeout(() => {
+        if (layout.viewport) void setViewport(layout.viewport, { duration: 200 });
+        else void fitView({ padding: 0.1, duration: 250, maxZoom: 1 });
+      }, 0);
+    } catch (openError) {
+      setErrors([openError instanceof Error ? openError.message : "Не удалось открыть серверный проект."]);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function loadProjectFromJson(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) {
+      return;
+    }
+
+    if (file.size > MAX_PROJECT_FILE_SIZE_BYTES) {
+      setInfo("");
+      setErrors(["Файл слишком большой. Максимальный размер проекта — 5 МБ."]);
+      return;
+    }
+
+    setIsBusy(true);
+    setInfo("");
+    setErrors([]);
+    try {
+      const parsed = parseDiagramProjectJson(await file.text());
+      const { project, warnings } = parsed;
+      const loadedNodes = normalizeNodePositions(
+        project.diagram.blocks.map((block, index) =>
+          toNode(
+            block,
+            project.layout.positions[block.id] ?? defaultPosition(index),
+          ),
+        ),
+      );
+      const positions = positionsFromNodes(loadedNodes);
+
+      setNodes(loadedNodes);
+      setEdges(edgesFromDiagram(project.diagram, positions));
+      setNodeCounter(nextCounterForDiagram(project.diagram));
+      setSolver(project.simulation.solver);
+      setTEnd(project.simulation.t_end);
+      setDt(project.simulation.dt);
+      setSelectedNodeId(null);
+      setInspectorView("simulation");
+      setIsInspectorOpen(false);
+      setIsParameterModalOpen(false);
+      setResult(null);
+      setIsScopeOpen(false);
+      setScopeTab("plot");
+      setWorkspaceMode("editor");
+      setIsDefenseGuideVisible(false);
+      setHierarchyStack([]);
+      setServerProjectId(null);
+      setServerProjectVersion(null);
+      setServerProjectTitle("");
+      setErrors([]);
+      setInfo(
+        warnings.length > 0
+          ? `Проект «${project.metadata.title}» загружен. ${warnings.join(" ")}`
+          : `Проект «${project.metadata.title}» загружен из ${file.name}.`,
+      );
+
+      window.setTimeout(() => {
+        if (project.layout.viewport) {
+          void setViewport(project.layout.viewport, { duration: 200 });
+        } else {
+          void fitView({ padding: 0.1, duration: 250, maxZoom: 1 });
+        }
+      }, 0);
+    } catch (error) {
+      if (error instanceof ProjectFileError) {
+        setErrors([error.message, ...error.details]);
+      } else {
+        setErrors([
+          error instanceof Error
+            ? error.message
+            : "Не удалось загрузить проект.",
+        ]);
+      }
+      setDiagnosticsTab("issues");
+      setIsScopeOpen(true);
+      setIsDiagnosticsCollapsed(false);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function focusDiagnosticIssue(issue: PanelDiagnosticIssue) {
+    if (!issue.blockId) {
+      return;
+    }
+    const node = getNode(issue.blockId);
+    if (!node) {
+      return;
+    }
+    setSelectedNodeId(issue.blockId);
+    setInspectorView("block");
+    setIsInspectorOpen(true);
+    setIsLibraryCollapsed(true);
+    setNodes((current) => current.map((candidate) => ({
+      ...candidate,
+      selected: candidate.id === issue.blockId,
+    })));
+    const origin = node.positionAbsolute ?? node.position;
+    const centerX = origin.x + (node.width ?? 180) / 2;
+    const centerY = origin.y + (node.height ?? 76) / 2;
+    void setCenter(centerX, centerY, {
+      zoom: Math.min(Math.max(getViewport().zoom, 0.85), 1.05),
+      duration: 320,
+    });
+  }
+
+  function runPreflight(diagram: Diagram) {
+    const report = hierarchyStack.length === 0
+      ? diagnoseFlowModel(nodes as DiagramNode[], edges)
+      : diagnoseDiagram(diagram);
+    setDiagnosticsIssues(report.issues);
+    setErrors(
+      report.issues
+        .filter((issue) => issue.severity === "error")
+        .map((issue) => issue.message),
+    );
+    return report;
+  }
+
   async function runValidation() {
+    setIsLibraryCollapsed(true);
+    setIsInspectorOpen(false);
     setInfo("");
     setResult(null);
-    const diagram = diagramFromFlow(nodes as DiagramNode[], edges);
+    setDiagnosticsState("validating");
+    setDiagnosticsTab("progress");
+    setDiagnosticsProgress([
+      { id: "structure", label: "Проверка структуры", status: "active", detail: "Соединения и обязательные порты" },
+      { id: "backend", label: "Проверка модели", status: "pending", detail: "Иерархия и алгебраические петли" },
+      { id: "solver", label: "Численный расчёт", status: "pending", detail: "Запускается отдельно" },
+    ]);
+    setScopeHeightPx((current) => Math.min(current, 280));
+    setIsScopeOpen(true);
+    setIsDiagnosticsCollapsed(false);
+    const diagram = diagramWithCurrentHierarchy();
+    const preflight = runPreflight(diagram);
+    if (!preflight.canRun) {
+      setDiagnosticsState("error");
+      setDiagnosticsTab("issues");
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "error", detail: "Найдены ошибки" },
+        { id: "backend", label: "Проверка модели", status: "pending" },
+        { id: "solver", label: "Численный расчёт", status: "pending" },
+      ]);
+      return;
+    }
     try {
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "done" },
+        { id: "backend", label: "Проверка модели", status: "active", detail: "Проверяется серверная модель" },
+        { id: "solver", label: "Численный расчёт", status: "pending" },
+      ]);
       const response = await validateDiagram(diagram);
       if (response.valid) {
         setErrors([]);
+        setDiagnosticsState("success");
+        setDiagnosticsTab("issues");
+        setDiagnosticsProgress([
+          { id: "structure", label: "Проверка структуры", status: "done" },
+          { id: "backend", label: "Проверка модели", status: "done" },
+          { id: "solver", label: "Численный расчёт", status: "pending", detail: "Модель готова к запуску" },
+        ]);
         setInfo(
           diagramHasCycle(diagram)
             ? "Обратная связь допустима: цикл проходит через динамический блок."
-            : "Схема корректна."
+            : "Схема корректна.",
         );
       } else {
-        setErrors(response.errors.map(formatValidationMessage));
+        const messages = response.errors.map(formatValidationMessage);
+        setErrors(messages);
+        setDiagnosticsIssues((current) => [
+          ...current.filter((issue) => issue.code !== "model-ready"),
+          ...messages.map((message, index): ModelDiagnosticIssue => ({
+            id: `backend-validation-${index}`,
+            code: "port-mismatch",
+            severity: "error",
+            message,
+            scopePath: [],
+          })),
+        ]);
+        setDiagnosticsState("error");
+        setDiagnosticsTab("issues");
+        setDiagnosticsProgress([
+          { id: "structure", label: "Проверка структуры", status: "done" },
+          { id: "backend", label: "Проверка модели", status: "error", detail: "Сервер отклонил схему" },
+          { id: "solver", label: "Численный расчёт", status: "pending" },
+        ]);
         setInfo("");
       }
     } catch (error) {
-      setErrors([error instanceof Error ? error.message : "Не удалось выполнить проверку схемы."]);
+      const message = error instanceof Error
+        ? error.message
+        : "Не удалось выполнить проверку схемы.";
+      setErrors([message]);
+      setDiagnosticsIssues((current) => [
+        ...current.filter((issue) => issue.code !== "model-ready"),
+        { id: "backend-unavailable", code: "port-mismatch", severity: "error", message, scopePath: [] },
+      ]);
+      setDiagnosticsState("error");
+      setDiagnosticsTab("issues");
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "done" },
+        { id: "backend", label: "Проверка модели", status: "error", detail: "Нет ответа от сервера" },
+        { id: "solver", label: "Численный расчёт", status: "pending" },
+      ]);
     }
   }
 
   async function runSimulation() {
+    setWorkspaceMode("editor");
+    setScopeTab("plot");
+    setIsLibraryCollapsed(true);
+    setIsInspectorOpen(false);
     if (dt <= 0 || tEnd <= 0) {
-      setErrors(["Параметры моделирования должны удовлетворять условиям: t_end > 0 и dt > 0."]);
+      const message = "Параметры моделирования должны удовлетворять условиям: t_end > 0 и dt > 0.";
+      setErrors([message]);
+      setDiagnosticsIssues([{
+        id: "simulation-range",
+        code: "invalid-parameter",
+        severity: "error",
+        message,
+        scopePath: [],
+      }]);
+      setDiagnosticsState("error");
+      setDiagnosticsTab("issues");
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "pending" },
+        { id: "backend", label: "Проверка модели", status: "pending" },
+        { id: "solver", label: "Численный расчёт", status: "error", detail: "Проверьте t_end и dt" },
+      ]);
+      setScopeHeightPx((current) => Math.min(current, 280));
+      setIsScopeOpen(true);
+      setIsDiagnosticsCollapsed(false);
       return;
     }
 
     setInfo("");
     setErrors([]);
+    setResult(null);
+    setDiagnosticsState("validating");
+    setDiagnosticsTab("progress");
+    setDiagnosticsProgress([
+      { id: "structure", label: "Проверка структуры", status: "active", detail: "Соединения и параметры блоков" },
+      { id: "backend", label: "Подготовка модели", status: "pending" },
+      { id: "solver", label: "Численный расчёт", status: "pending" },
+    ]);
+    setInspectorView("simulation");
+    setScopeHeightPx((current) => Math.min(current, 280));
+    setIsScopeOpen(true);
+    setIsDiagnosticsCollapsed(false);
+    const diagram = diagramWithCurrentHierarchy();
+    const preflight = runPreflight(diagram);
+    if (!preflight.canRun) {
+      setDiagnosticsState("error");
+      setDiagnosticsTab("issues");
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "error", detail: "Исправьте отмеченные блоки" },
+        { id: "backend", label: "Подготовка модели", status: "pending" },
+        { id: "solver", label: "Численный расчёт", status: "pending" },
+      ]);
+      return;
+    }
+
+    setDiagnosticsState("running");
+    setDiagnosticsProgress([
+      { id: "structure", label: "Проверка структуры", status: "done" },
+      { id: "backend", label: "Подготовка модели", status: "done" },
+      { id: "solver", label: "Численный расчёт", status: "active", detail: solver === "solve_ivp" ? "Adaptive RK45" : "Fixed-step RK4" },
+    ]);
     setIsBusy(true);
-    const diagram = diagramFromFlow(nodes as DiagramNode[], edges);
     try {
       const response = await simulateDiagram({
         diagram,
         t_start: 0,
         t_end: tEnd,
         dt,
-        solver
+        solver,
       });
       setResult(response);
+      setDiagnosticsState("success");
+      setDiagnosticsTab("results");
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "done" },
+        { id: "backend", label: "Подготовка модели", status: "done" },
+        { id: "solver", label: "Численный расчёт", status: "done", detail: `${response.time.length} точек` },
+      ]);
+      setScopeHeightPx((current) => Math.max(current, 400));
+      setIsDiagnosticsCollapsed(true);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          void fitView({ padding: 0.1, duration: 220, maxZoom: 1 });
+        });
+      });
     } catch (error) {
       setResult(null);
-      if (error instanceof SimulationApiError) {
-        setErrors(
-          (error.validationErrors.length > 0 ? error.validationErrors : [error.message]).map(
-            formatValidationMessage
-          )
-        );
-      } else {
-        setErrors([error instanceof Error ? error.message : "Не удалось выполнить моделирование."]);
-      }
+      const messages = error instanceof SimulationApiError
+        ? (error.validationErrors.length > 0 ? error.validationErrors : [error.message]).map(formatValidationMessage)
+        : [error instanceof Error ? error.message : "Не удалось выполнить моделирование."];
+      setErrors(messages);
+      setDiagnosticsIssues((current) => [
+        ...current.filter((issue) => issue.code !== "model-ready"),
+        ...messages.map((message, index): ModelDiagnosticIssue => ({
+          id: `simulation-error-${index}`,
+          code: "invalid-parameter",
+          severity: "error",
+          message,
+          scopePath: [],
+        })),
+      ]);
+      setDiagnosticsState("error");
+      setDiagnosticsTab("issues");
+      setDiagnosticsProgress([
+        { id: "structure", label: "Проверка структуры", status: "done" },
+        { id: "backend", label: "Подготовка модели", status: "done" },
+        { id: "solver", label: "Численный расчёт", status: "error", detail: "Расчёт остановлен" },
+      ]);
+      setIsDiagnosticsCollapsed(false);
     } finally {
       setIsBusy(false);
+    }
+  }
+
+  async function runPidTuning() {
+    if (!selectedNodeId || selectedNode?.blockType !== "PIDController") {
+      setErrors(["Выберите блок PIDController для автоматической настройки."]);
+      return;
+    }
+
+    setIsTuning(true);
+    setInfo("");
+    setErrors([]);
+    try {
+      const response = await tunePidController({
+        diagram: diagramWithCurrentHierarchy(),
+        controller_block_id: [...hierarchyStack.map((frame) => frame.subsystemId), selectedNodeId].join("::"),
+        t_end: Math.max(tEnd, 4),
+        dt: Math.max(dt, 0.01),
+        max_iterations: 8,
+      });
+      setPidTuningResult(response);
+      applySelectedParameters(response.tuned_parameters);
+      setResult(null);
+      const improvement = response.improvement_percent ?? 0;
+      setInfo(
+        `PID настроен: Kp=${response.tuned_parameters.kp.toFixed(4)}, ` +
+        `Ki=${response.tuned_parameters.ki.toFixed(4)}, ` +
+        `Kd=${response.tuned_parameters.kd.toFixed(4)}. ` +
+        `Критерий улучшен на ${improvement.toFixed(1)}%.`,
+      );
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : "Не удалось настроить PID-регулятор."]);
+    } finally {
+      setIsTuning(false);
     }
   }
 
@@ -531,10 +1370,20 @@ function ModelingWorkspace() {
     setNodes([]);
     setEdges([]);
     setSelectedNodeId(null);
+    setInspectorView("simulation");
+    setIsInspectorOpen(false);
     setResult(null);
+    setIsScopeOpen(false);
+    setScopeTab("plot");
+    setWorkspaceMode("editor");
+    setIsDefenseGuideVisible(false);
     setErrors([]);
     setInfo("");
     setIsParameterModalOpen(false);
+    setHierarchyStack([]);
+    setServerProjectId(null);
+    setServerProjectVersion(null);
+    setServerProjectTitle("");
   }
 
   function deleteSelectedNode() {
@@ -544,209 +1393,399 @@ function ModelingWorkspace() {
     setNodes((current) => current.filter((node) => node.id !== selectedNodeId));
     setEdges((current) =>
       current.filter(
-        (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId
-      )
+        (edge) =>
+          edge.source !== selectedNodeId && edge.target !== selectedNodeId,
+      ),
     );
     setSelectedNodeId(null);
+    setInspectorView("simulation");
+    setIsInspectorOpen(false);
     setIsParameterModalOpen(false);
   }
 
   return (
-    <main className="simulink-root">
-      <header className="toolstrip">
-        <div className="toolstrip__title">
-          <h1>НИР: прототип визуального моделирования</h1>
-          <p>Собирайте блок-схемы, проверяйте структуру и моделируйте переходные процессы.</p>
-        </div>
+    <main className={`control-app ${effectiveDiagnosticsState === "running" ? "is-running" : ""}`}>
+      <a className="skip-link" href="#diagram-workbench">К рабочей схеме</a>
+      <WorkspaceChrome
+        activeMode={workspaceMode}
+        onModeChange={openWorkspaceMode}
+        diagnosticsState={effectiveDiagnosticsState}
+        simulationSucceeded={Boolean(result?.success)}
+        runDisabled={isBusy || diagnosticsState === "validating" || diagnosticsState === "running"}
+        runButtonLabel={runButtonLabel}
+        onRun={runSimulation}
+        onSaveProject={saveProjectToJson}
+        onImportProject={loadProjectFromJson}
+        isArranging={isArranging}
+        canArrange={nodes.length >= 2}
+        onArrange={() => void arrangeCurrentDiagram()}
+        projectTitle={serverProjectTitle}
+        nodeCount={nodes.length}
+        edgeCount={edges.length}
+        serverProjectId={serverProjectId}
+        serverProjectVersion={serverProjectVersion}
+        onSaveServerProject={() => void saveCurrentProjectOnServer()}
+        onOpenServerProjects={() => setIsServerProjectsOpen(true)}
+        onClear={clearDiagram}
+      />
+      <section className={`workspace ${isLibraryCollapsed ? "library-collapsed" : "library-open"} ${isInspectorOpen ? "inspector-open" : ""}`}>
+        <WorkspaceRail
+          diagnosticsState={effectiveDiagnosticsState}
+          simulationSucceeded={Boolean(result?.success)}
+          isLibraryOpen={!isLibraryCollapsed}
+          isInspectorOpen={isInspectorOpen}
+          isScopeOpen={isScopeOpen}
+          isArranging={isArranging}
+          canArrange={nodes.length >= 2}
+          onToggleLibrary={() => {
+            setIsLibraryCollapsed((current) => !current);
+            setIsInspectorOpen(false);
+          }}
+          onOpenInspector={() => {
+            setInspectorView("simulation");
+            setIsInspectorOpen(true);
+            setIsLibraryCollapsed(true);
+          }}
+          onToggleScope={() => {
+            if (isScopeOpen) {
+              setWorkspaceMode("editor");
+              setScopeTab("plot");
+            }
+            setIsScopeOpen((current) => !current);
+          }}
+          onArrange={() => void arrangeCurrentDiagram()}
+          onFit={() => void fitView({ padding: 0.08, duration: 280, maxZoom: 1 })}
+        />
+        {(!isLibraryCollapsed || isInspectorOpen) && (
+          <button
+            type="button"
+            className="workspace-panel-scrim"
+            aria-label="Закрыть боковую панель"
+            onClick={() => {
+              setIsLibraryCollapsed(true);
+              setIsInspectorOpen(false);
+            }}
+          />
+        )}
+        <aside
+          ref={libraryPaneRef}
+          className={`library-pane ${isLibraryCollapsed ? "is-collapsed" : "is-open"}`}
+          aria-hidden={isLibraryCollapsed}
+          data-testid="block-library-pane"
+        >
+          <button
+            type="button"
+            className="library-pane__toggle"
+            onClick={() => setIsLibraryCollapsed(true)}
+            aria-expanded={!isLibraryCollapsed}
+            title="Закрыть библиотеку"
+          >
+            <span>Библиотека блоков</span>
+            <UiIcon name="close" />
+          </button>
+          <BlockPalette onAddBlock={addBlock} insideSubsystem={hierarchyStack.length > 0} />
 
-        <div className="toolstrip__group">
-          <label className="tool-input">
-            <span>Решатель</span>
-            <select
-              value={solver}
-              onChange={(event) => setSolver(event.target.value as "rk4" | "solve_ivp")}
-              data-testid="solver-select"
-            >
-              <option value="solve_ivp">solve_ivp</option>
-              <option value="rk4">rk4</option>
-            </select>
-          </label>
-          <label className="tool-input">
-            <span>t_end</span>
-            <input
-              type="number"
-              value={tEnd}
-              onChange={(event) => setTEnd(Number(event.target.value))}
-            />
-          </label>
-          <label className="tool-input">
-            <span>dt</span>
-            <input
-              type="number"
-              value={dt}
-              step="0.001"
-              onChange={(event) => setDt(Number(event.target.value))}
-            />
-          </label>
-        </div>
-
-        <div className="toolstrip__actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={runValidation}
-            data-testid="validate-button"
-          >
-            Проверить
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={runSimulation}
-            data-testid="simulate-button"
-          >
-            {isBusy ? "Расчёт..." : "Смоделировать"}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void fitView({ padding: 0.2, duration: 250 })}
-          >
-            Вписать схему
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setIsParameterModalOpen(true)}
-          >
-            Параметры
-          </button>
-          <button
-            type="button"
-            className="btn btn-danger-soft"
-            onClick={deleteSelectedNode}
-            disabled={!selectedNodeId}
-          >
-            Удалить блок
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={clearDiagram}
-            data-testid="clear-button"
-          >
-            Очистить
-          </button>
-        </div>
-      </header>
-
-      <section className="workspace">
-        <aside className="library-pane">
-          <BlockPalette onAddBlock={addBlock} />
-
-          <section className="panel">
-            <h2>Примеры</h2>
+          <details className="panel panel--flush examples-panel">
+            <summary className="panel-heading">
+              <div>
+                <span className="panel-kicker">Быстрый старт</span>
+                <h2>Готовые схемы</h2>
+              </div>
+              <span className="examples-panel__count">{EXAMPLE_PRESETS.length}</span>
+              <UiIcon name="chevron" />
+            </summary>
             <div className="example-list">
               {EXAMPLE_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
-                  onClick={() => applyPreset(preset)}
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    applyPreset(preset);
+                  }}
                   data-testid={`load-example-${preset.id}`}
                 >
-                  {preset.title}
+                  <span>{preset.title}</span>
+                  <UiIcon name="chevron" />
                 </button>
               ))}
             </div>
-          </section>
-
-          <section className="panel selection-panel">
-            <h2>Выбранный блок</h2>
-            {selectedNode ? (
-              <>
-                <p>
-                  <strong>{blockTypeLabel(selectedNode.blockType)}</strong> ({selectedNode.blockId})
-                </p>
-                <p>Дважды кликните блок или нажмите «Параметры».</p>
-              </>
-            ) : (
-              <p>Выберите блок, чтобы просмотреть и изменить его параметры.</p>
-            )}
-            {info && <p className="info-text">{info}</p>}
-          </section>
-
-          <section className="panel loop-help-panel">
-            <h2>Как собрать замкнутый контур</h2>
-            <ol>
-              <li>r(t) подключите к + входу Sum.</li>
-              <li>y(t) подключите к - входу Sum.</li>
-              <li>Sum.out подключите к регулятору.</li>
-              <li>Регулятор подключите к объекту.</li>
-              <li>Выход объекта подключите к Scope и к обратной связи.</li>
-            </ol>
-          </section>
+          </details>
         </aside>
 
         <section className="modeling-main" ref={modelingMainRef} style={modelingMainStyle}>
-          <section className="canvas-pane">
-            <div className="canvas-caption">
-              <span>Рабочее поле схемы</span>
-              <span>
-                Блоков: {nodes.length} - Связей: {edges.length}
-              </span>
-              <span className="canvas-caption__hint">
-                Положение проводов рассчитывается автоматически. Для изменения маршрута переместите блоки.
-              </span>
-            </div>
-            <div
-              className="canvas-wrapper"
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              data-testid="diagram-canvas"
-            >
+          <section className={`canvas-pane ${isDefenseGuideVisible ? "has-defense-guide" : ""}`}>
+            <header className="canvas-caption">
+              <div className="canvas-caption__context">
+                <span className="canvas-caption__eyebrow">Структурная схема · уровень {hierarchyStack.length}</span>
+                <h1>{currentLevelTitle}</h1>
+                <nav className="hierarchy-breadcrumb" aria-label="Уровень подсистемы">
+                  <button
+                    type="button"
+                    className={hierarchyStack.length === 0 ? "is-current" : ""}
+                    onClick={() => leaveSubsystemToDepth(0)}
+                    disabled={hierarchyStack.length === 0}
+                  >
+                    Главная схема
+                  </button>
+                  {hiddenHierarchyParts.length > 0 && (
+                    <details className="hierarchy-breadcrumb__collapsed">
+                      <summary title={`${hiddenHierarchyParts.length} скрытых уровня`}>
+                        … {hiddenHierarchyParts.length}
+                      </summary>
+                      <div>
+                        {hiddenHierarchyParts.map((part) => (
+                          <button
+                            key={`${part.depth}-${part.label}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.currentTarget.closest("details")?.removeAttribute("open");
+                              leaveSubsystemToDepth(part.depth);
+                            }}
+                          >
+                            <span>Уровень {part.depth}</span>
+                            {part.label}
+                          </button>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                  {visibleHierarchyParts.slice(1).map((part) => {
+                    const isCurrent = part.depth === hierarchyStack.length;
+                    return (
+                      <button
+                        key={`${part.depth}-${part.label}`}
+                        type="button"
+                        className={isCurrent ? "is-current" : ""}
+                        onClick={() => leaveSubsystemToDepth(part.depth)}
+                        disabled={isCurrent}
+                      >
+                        {part.label}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+              <div className="canvas-caption__actions">
+                {hierarchyStack.length > 0 && (
+                  <button type="button" className="btn btn-secondary" onClick={leaveSubsystem} data-testid="leave-subsystem-button">
+                    ← На уровень выше
+                  </button>
+                )}
+                <span className="canvas-caption__hint">Двойной клик — параметры · Delete — удалить</span>
+              </div>
+            </header>
+            {isDefenseGuideVisible && (
+              <section className="defense-demo-guide" data-testid="defense-demo-guide" aria-label="Сценарий демонстрации для защиты">
+                <div className="defense-demo-guide__title">
+                  <span>Сценарий защиты</span>
+                  <strong>Один объект · три шага</strong>
+                </div>
+                <div className="defense-demo-guide__steps">
+                  <button
+                    type="button"
+                    className={result?.success && workspaceMode === "editor" ? "is-active" : ""}
+                    onClick={() => void runSimulation()}
+                    disabled={isBusy}
+                    data-testid="defense-step-model"
+                  >
+                    <b>01</b><span>Модель<small>переходный процесс</small></span>
+                  </button>
+                  <button
+                    type="button"
+                    className={workspaceMode === "observer" ? "is-active" : ""}
+                    onClick={() => openWorkspaceMode("observer")}
+                    data-testid="defense-step-observer"
+                  >
+                    <b>02</b><span>Наблюдатель<small>оценка состояния</small></span>
+                  </button>
+                  <button
+                    type="button"
+                    className={workspaceMode === "outputFeedback" ? "is-active" : ""}
+                    onClick={() => openWorkspaceMode("outputFeedback")}
+                    data-testid="defense-step-lqg"
+                  >
+                    <b>03</b><span>LQG-контур<small>слежение по выходу</small></span>
+                  </button>
+                </div>
+                <button type="button" className="defense-demo-guide__close" onClick={() => setIsDefenseGuideVisible(false)} aria-label="Скрыть сценарий защиты" title="Скрыть">
+                  <UiIcon name="close" />
+                </button>
+              </section>
+            )}
+            <div id="diagram-workbench" className="canvas-wrapper" onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
+              <div className="canvas-telemetry" aria-label="Состояние схемы">
+                <span><small>NODES</small><strong>{String(nodes.length).padStart(2, "0")}</strong></span>
+                <span><small>LINKS</small><strong>{String(edges.length).padStart(2, "0")}</strong></span>
+                <span><small>LEVEL</small><strong>{String(hierarchyStack.length).padStart(2, "0")}</strong></span>
+                <span><small>SOLVER</small><strong>{solver === "solve_ivp" ? "RK45" : "RK4"}</strong></span>
+              </div>
+              {nodes.length === 0 && (
+                <div className="canvas-empty-state canvas-starter">
+                  <header className="canvas-starter__intro">
+                    <div>
+                      <span className="canvas-starter__prompt">~/diagram/new</span>
+                      <strong>Соберите первый контур</strong>
+                      <p>Выберите готовую топологию или перенесите блок из библиотеки.</p>
+                    </div>
+                    <span className="canvas-starter__cursor" aria-hidden="true">_</span>
+                  </header>
+                  <div className="canvas-starter__visual">
+                    <img src="/axiom-signal-flow.png" alt="" aria-hidden="true" />
+                  </div>
+                  <div className="canvas-starter__grid">
+                    {STARTER_PRESETS.map((starter) => (
+                      <button
+                        key={starter.id}
+                        type="button"
+                        onClick={() => applyPreset(starter.preset)}
+                        data-testid={`starter-example-${starter.id}`}
+                      >
+                        <span>{starter.category}</span>
+                        <strong>{starter.title}</strong>
+                        <small>{starter.description}</small>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="canvas-starter__manual"><span>→</span> Перетащите любой блок на сетку — позиция привяжется к шагу 8 px</p>
+                </div>
+              )}
               <ReactFlow
-                nodes={nodes}
+                nodes={renderedNodes}
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
-                onSelectionChange={({ nodes: selected }) =>
-                  setSelectedNodeId(selected[0]?.id ?? null)
-                }
-                onNodeDoubleClick={(_, node) => {
-                  setSelectedNodeId(node.id);
-                  setIsParameterModalOpen(true);
+                onSelectionChange={({ nodes: selected }) => {
+                  const nextSelectedId = selected[0]?.id ?? null;
+                  setSelectedNodeId(nextSelectedId);
                 }}
-                onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                onPaneClick={() => setSelectedNodeId(null)}
+                onNodeDoubleClick={(_, node) => {
+                  if (nodeClickTimerRef.current !== null) {
+                    window.clearTimeout(nodeClickTimerRef.current);
+                    nodeClickTimerRef.current = null;
+                  }
+                  setSelectedNodeId(node.id);
+                  setInspectorView("block");
+                  setIsInspectorOpen(true);
+                  setIsLibraryCollapsed(true);
+                  if (node.data.blockType === "Subsystem") {
+                    enterSubsystem(node.id);
+                    setIsInspectorOpen(false);
+                  } else {
+                    setIsParameterModalOpen(true);
+                    setIsInspectorOpen(false);
+                  }
+                }}
+                onNodeClick={(_, node) => {
+                  if (nodeClickTimerRef.current !== null) window.clearTimeout(nodeClickTimerRef.current);
+                  nodeClickTimerRef.current = window.setTimeout(() => {
+                    setSelectedNodeId(node.id);
+                    setInspectorView("block");
+                    setIsInspectorOpen(true);
+                    setIsLibraryCollapsed(true);
+                    nodeClickTimerRef.current = null;
+                  }, 180);
+                }}
+                onPaneClick={() => {
+                  if (nodeClickTimerRef.current !== null) {
+                    window.clearTimeout(nodeClickTimerRef.current);
+                    nodeClickTimerRef.current = null;
+                  }
+                  setSelectedNodeId(null);
+                  setInspectorView("simulation");
+                  setIsInspectorOpen(false);
+                }}
                 nodeTypes={NODE_TYPES}
+                edgeTypes={EDGE_TYPES}
                 defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
-                connectionLineType={ConnectionLineType.SmoothStep}
+                connectionLineType={ConnectionLineType.Step}
                 fitView
+                fitViewOptions={{ padding: 0.08, maxZoom: 1 }}
+                minZoom={0.18}
+                maxZoom={1.35}
               >
-                <MiniMap pannable zoomable />
+                <MiniMap pannable zoomable maskColor="rgba(0, 0, 0, 0.92)" nodeColor="#8d8d8d" />
                 <Controls />
-                <Background gap={22} color="#ced7e2" />
+                <Background variant={BackgroundVariant.Lines} gap={30} size={0.55} color="#222222" />
               </ReactFlow>
             </div>
           </section>
 
-          <div
-            className={`scope-splitter ${isResizingScope ? "is-active" : ""}`}
-            role="separator"
-            aria-label="Изменить высоту панели осциллографа"
-            aria-orientation="horizontal"
-            onMouseDown={startScopeResize}
-            onDoubleClick={() => setScopeHeightPx(520)}
-          >
-            <span />
-          </div>
+          {isScopeOpen && (
+            <div className={`scope-splitter ${isResizingScope ? "is-active" : ""}`} role="separator" aria-label="Изменить высоту панели результатов" aria-orientation="horizontal" onMouseDown={startScopeResize} onDoubleClick={() => setScopeHeightPx(420)}>
+              <span />
+            </div>
+          )}
 
-          <section className="scope-dock">
-            <SimulationChart result={result} />
-            <ErrorPanel errors={errors} />
+          <section className={`scope-dock ${isScopeOpen ? "is-open" : "is-collapsed"} ${(result?.success || scopeTab === "observer" || scopeTab === "outputFeedback" || scopeTab === "learning") && isScopeOpen ? "has-result" : "has-diagnostics-only"}`}>
+            {isScopeOpen && (result?.success || scopeTab === "observer" || scopeTab === "outputFeedback" || scopeTab === "learning") && (
+              <SimulationChart
+                result={result}
+                diagram={diagramWithCurrentHierarchy()}
+                collapsed={false}
+                onToggleCollapsed={() => {
+                  setIsScopeOpen(false);
+                  setWorkspaceMode("editor");
+                  setScopeTab("plot");
+                }}
+                requestedTab={scopeTab}
+                onTabChange={(tab) => {
+                  setScopeTab(tab);
+                  setWorkspaceMode(tab === "observer" || tab === "outputFeedback" || tab === "learning" ? tab : "editor");
+                }}
+              />
+            )}
+            {!result?.success && scopeTab !== "observer" && scopeTab !== "outputFeedback" && scopeTab !== "learning" && <DiagnosticsPanel
+              className="run-diagnostics-panel"
+              state={effectiveDiagnosticsState}
+              statusLabel={effectiveDiagnosticsState === "success" && !result?.success ? "Схема проверена" : undefined}
+              issues={panelIssues}
+              progress={diagnosticsProgress}
+              results={diagnosticResults}
+              activeTab={diagnosticsTab}
+              collapsed={!isScopeOpen || isDiagnosticsCollapsed}
+              onTabChange={setDiagnosticsTab}
+              onCollapsedChange={(collapsed) => {
+                setIsDiagnosticsCollapsed(collapsed);
+                if (!collapsed) {
+                  setIsScopeOpen(true);
+                } else if (!result?.success) {
+                  setIsScopeOpen(false);
+                }
+              }}
+              onIssueClick={focusDiagnosticIssue}
+            />}
           </section>
         </section>
+
+        {isInspectorOpen && <WorkspaceInspector
+          selectedNode={selectedNode}
+          selectedNodeId={selectedNodeId}
+          selectedNodeTitle={selectedNodeTitle}
+          currentLevelTitle={currentLevelTitle}
+          info={info}
+          view={inspectorView}
+          onViewChange={setInspectorView}
+          onClose={() => setIsInspectorOpen(false)}
+          solver={solver}
+          onSolverChange={setSolver}
+          tEnd={tEnd}
+          onTEndChange={setTEnd}
+          dt={dt}
+          onDtChange={setDt}
+          onValidate={runValidation}
+          onOpenParameters={() => setIsParameterModalOpen(true)}
+          onDeleteSelected={deleteSelectedNode}
+          onEnterSubsystem={enterSubsystem}
+          onTunePid={() => void runPidTuning()}
+          isTuning={isTuning}
+          isBusy={isBusy}
+          pidTuningResult={pidTuningResult}
+          nodeCount={nodes.length}
+          edgeCount={edges.length}
+          hierarchyDepth={hierarchyStack.length}
+        />}
       </section>
 
       <ParameterEditor
@@ -755,6 +1794,19 @@ function ModelingWorkspace() {
         connectedInputPorts={selectedConnectedInputPorts}
         onClose={() => setIsParameterModalOpen(false)}
         onParametersApply={applySelectedParameters}
+      />
+      <ServerProjectsModal
+        open={isServerProjectsOpen}
+        currentProjectId={serverProjectId}
+        isBusy={isBusy}
+        onClose={() => setIsServerProjectsOpen(false)}
+        onCreate={createProjectOnServer}
+        onOpen={openProjectFromServer}
+        onCurrentDeleted={() => {
+          setServerProjectId(null);
+          setServerProjectVersion(null);
+          setServerProjectTitle("");
+        }}
       />
     </main>
   );

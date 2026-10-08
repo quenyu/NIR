@@ -11,7 +11,9 @@ except ImportError:  # pragma: no cover - scipy is a project dependency.
 
 from app.core.block_specs import (
     DYNAMIC_BLOCK_TYPES,
+    butterworth_coefficients,
     get_numeric_parameter,
+    get_pid_coefficients,
     get_transfer_function_coefficients,
     get_signs,
     has_direct_feedthrough,
@@ -26,6 +28,7 @@ from app.simulation.blocks import (
     step_input,
     sum_output,
 )
+from app.simulation.hierarchy import flatten_diagram
 from app.validation.validator import static_topological_sort, validate_diagram
 
 
@@ -41,6 +44,7 @@ class ScopeBinding:
     label: str
     source_block: str
     source_port: str
+    reference: float | None = None
 
 
 @dataclass(frozen=True)
@@ -85,14 +89,22 @@ class CompiledDiagram:
             )
         return outputs[source]
 
-    def evaluate_outputs(self, t: float, x: np.ndarray) -> dict[tuple[str, str], float]:
+    def evaluate_outputs(
+        self,
+        t: float,
+        x: np.ndarray,
+        source_values: dict[str, float] | None = None,
+    ) -> dict[tuple[str, str], float]:
         outputs: dict[tuple[str, str], float] = {}
 
         for block in self.diagram.blocks:
             if block.type == "StepInput":
-                amplitude = get_numeric_parameter(block.parameters, "amplitude", 1.0)
-                t0 = get_numeric_parameter(block.parameters, "t0", 0.0)
-                outputs[(block.id, "out")] = step_input(t, amplitude, t0)
+                if source_values is not None and block.id in source_values:
+                    outputs[(block.id, "out")] = float(source_values[block.id])
+                else:
+                    amplitude = get_numeric_parameter(block.parameters, "amplitude", 1.0)
+                    t0 = get_numeric_parameter(block.parameters, "t0", 0.0)
+                    outputs[(block.id, "out")] = step_input(t, amplitude, t0)
             elif block.type == "Integrator":
                 state_slice = self.dynamic_state_slices[block.id]
                 outputs[(block.id, "out")] = float(x[state_slice.start])
@@ -103,6 +115,17 @@ class CompiledDiagram:
                 state_slice = self.dynamic_state_slices[block.id]
                 outputs[(block.id, "out")] = float(x[state_slice.start])
             elif block.type == "TransferFunction":
+                model = self.transfer_functions[block.id]
+                if model.is_dynamic and not model.has_direct_feedthrough:
+                    state_slice = self.dynamic_state_slices[block.id]
+                    state = x[state_slice]
+                    outputs[(block.id, "out")] = model.output(state, 0.0)
+            elif block.type == "ButterworthLPF":
+                model = self.transfer_functions[block.id]
+                state_slice = self.dynamic_state_slices[block.id]
+                state = x[state_slice]
+                outputs[(block.id, "out")] = model.output(state, 0.0)
+            elif block.type == "PIDController":
                 model = self.transfer_functions[block.id]
                 if model.is_dynamic and not model.has_direct_feedthrough:
                     state_slice = self.dynamic_state_slices[block.id]
@@ -129,14 +152,28 @@ class CompiledDiagram:
                 else:
                     state = np.zeros(0, dtype=float)
                 outputs[(block.id, "out")] = model.output(state, x_in)
+            elif block.type == "PIDController":
+                model = self.transfer_functions[block.id]
+                x_in = self._input_value(block.id, "in", outputs)
+                if model.is_dynamic:
+                    state_slice = self.dynamic_state_slices[block.id]
+                    state = x[state_slice]
+                else:
+                    state = np.zeros(0, dtype=float)
+                outputs[(block.id, "out")] = model.output(state, x_in)
 
         return outputs
 
-    def rhs(self, t: float, x: np.ndarray) -> np.ndarray:
+    def rhs(
+        self,
+        t: float,
+        x: np.ndarray,
+        source_values: dict[str, float] | None = None,
+    ) -> np.ndarray:
         if self.initial_state.size == 0:
             return np.zeros(0, dtype=float)
 
-        outputs = self.evaluate_outputs(t, x)
+        outputs = self.evaluate_outputs(t, x, source_values)
         derivatives = np.zeros_like(x, dtype=float)
 
         for block in self.diagram.blocks:
@@ -175,10 +212,24 @@ class CompiledDiagram:
                 state = x[state_slice]
                 derivatives[state_slice] = model.derivative(state, x_in)
 
+            elif block.type == "ButterworthLPF":
+                model = self.transfer_functions[block.id]
+                state = x[state_slice]
+                derivatives[state_slice] = model.derivative(state, x_in)
+            elif block.type == "PIDController":
+                model = self.transfer_functions[block.id]
+                state = x[state_slice]
+                derivatives[state_slice] = model.derivative(state, x_in)
+
         return derivatives
 
-    def evaluate_scopes(self, t: float, x: np.ndarray) -> dict[str, float]:
-        outputs = self.evaluate_outputs(t, x)
+    def evaluate_scopes(
+        self,
+        t: float,
+        x: np.ndarray,
+        source_values: dict[str, float] | None = None,
+    ) -> dict[str, float]:
+        outputs = self.evaluate_outputs(t, x, source_values)
         scope_values: dict[str, float] = {}
         for scope in self.scopes:
             value = outputs[(scope.source_block, scope.source_port)]
@@ -249,34 +300,70 @@ def _build_transfer_function_models(diagram: Diagram) -> dict[str, TransferFunct
     models: dict[str, TransferFunctionModel] = {}
 
     for block in diagram.blocks:
-        if block.type != "TransferFunction":
-            continue
+        if block.type == "TransferFunction":
+            numerator, denominator = get_transfer_function_coefficients(block.parameters)
+            denominator_order = len(denominator) - 1
+            direct = has_direct_feedthrough(block.type, block.parameters)
 
-        numerator, denominator = get_transfer_function_coefficients(block.parameters)
-        denominator_order = len(denominator) - 1
-        direct = has_direct_feedthrough(block.type, block.parameters)
+            if denominator_order == 0:
+                gain = _static_transfer_function_gain(numerator, denominator)
+                models[block.id] = TransferFunctionModel(
+                    is_dynamic=False,
+                    has_direct_feedthrough=True,
+                    a=np.zeros((0, 0), dtype=float),
+                    b=np.zeros(0, dtype=float),
+                    c=np.zeros(0, dtype=float),
+                    d=gain,
+                )
+                continue
 
-        if denominator_order == 0:
-            gain = _static_transfer_function_gain(numerator, denominator)
+            a, b, c, d = _tf2ss(numerator, denominator)
             models[block.id] = TransferFunctionModel(
-                is_dynamic=False,
-                has_direct_feedthrough=True,
-                a=np.zeros((0, 0), dtype=float),
-                b=np.zeros(0, dtype=float),
-                c=np.zeros(0, dtype=float),
-                d=gain,
+                is_dynamic=True,
+                has_direct_feedthrough=direct,
+                a=a,
+                b=b,
+                c=c,
+                d=d,
             )
-            continue
 
-        a, b, c, d = _tf2ss(numerator, denominator)
-        models[block.id] = TransferFunctionModel(
-            is_dynamic=True,
-            has_direct_feedthrough=direct,
-            a=a,
-            b=b,
-            c=c,
-            d=d,
-        )
+        elif block.type == "ButterworthLPF":
+            order = int(get_numeric_parameter(block.parameters, "order", 2))
+            cutoff = get_numeric_parameter(block.parameters, "cutoff_freq", 10.0)
+            numerator, denominator = butterworth_coefficients(order, cutoff)
+            a, b, c, d = _tf2ss(numerator, denominator)
+            models[block.id] = TransferFunctionModel(
+                is_dynamic=True,
+                has_direct_feedthrough=False,
+                a=a,
+                b=b,
+                c=c,
+                d=d,
+            )
+
+        elif block.type == "PIDController":
+            numerator, denominator = get_pid_coefficients(block.parameters)
+            denominator_order = len(denominator) - 1
+            direct = has_direct_feedthrough(block.type, block.parameters)
+            if denominator_order == 0:
+                models[block.id] = TransferFunctionModel(
+                    is_dynamic=False,
+                    has_direct_feedthrough=True,
+                    a=np.zeros((0, 0), dtype=float),
+                    b=np.zeros(0, dtype=float),
+                    c=np.zeros(0, dtype=float),
+                    d=float(numerator[-1] / denominator[-1]),
+                )
+            else:
+                a, b, c, d = _tf2ss(numerator, denominator)
+                models[block.id] = TransferFunctionModel(
+                    is_dynamic=True,
+                    has_direct_feedthrough=direct,
+                    a=a,
+                    b=b,
+                    c=c,
+                    d=d,
+                )
 
     return models
 
@@ -304,7 +391,26 @@ def _build_static_order(diagram: Diagram) -> list[str]:
     return static_topological_sort(static_nodes, static_edges)
 
 
-def _build_dynamic_state(diagram: Diagram) -> tuple[dict[str, slice], np.ndarray]:
+def _initial_state_for_output(
+    model: TransferFunctionModel,
+    output_value: float,
+) -> np.ndarray:
+    """Choose the minimum-norm realization state with the requested y(0)."""
+
+    if model.c.size == 0:
+        return np.zeros(0, dtype=float)
+    denominator = float(model.c @ model.c)
+    if not np.isfinite(denominator) or denominator <= 1e-18:
+        if abs(output_value) <= 1e-15:
+            return np.zeros(model.c.size, dtype=float)
+        raise ValueError("Для выбранной реализации нельзя задать ненулевое начальное y0.")
+    return np.asarray(model.c * (output_value / denominator), dtype=float)
+
+
+def _build_dynamic_state(
+    diagram: Diagram,
+    transfer_functions: dict[str, TransferFunctionModel],
+) -> tuple[dict[str, slice], np.ndarray]:
     dynamic_state_slices: dict[str, slice] = {}
     initial_values: list[float] = []
 
@@ -337,6 +443,28 @@ def _build_dynamic_state(diagram: Diagram) -> tuple[dict[str, slice], np.ndarray
             initial_values.extend([0.0] * order)
             dynamic_state_slices[block.id] = slice(start, start + order)
 
+        elif block.type == "ButterworthLPF":
+            order = int(get_numeric_parameter(block.parameters, "order", 2))
+            start = len(initial_values)
+            y0 = get_numeric_parameter(block.parameters, "y0", 0.0)
+            initial_state = _initial_state_for_output(
+                transfer_functions[block.id],
+                y0,
+            )
+            if initial_state.size != order:
+                raise ValueError("Размер начального состояния ButterworthLPF не совпал с порядком.")
+            initial_values.extend(initial_state.tolist())
+            dynamic_state_slices[block.id] = slice(start, start + order)
+
+        elif block.type == "PIDController" and is_dynamic_block(
+            block.type, block.parameters
+        ):
+            _, denominator = get_pid_coefficients(block.parameters)
+            order = len(denominator) - 1
+            start = len(initial_values)
+            initial_values.extend([0.0] * order)
+            dynamic_state_slices[block.id] = slice(start, start + order)
+
     return dynamic_state_slices, np.array(initial_values, dtype=float)
 
 
@@ -351,13 +479,20 @@ def _build_scopes(
         source = incoming.get((block.id, "in"))
         if source is None:
             raise DiagramCompilationError([f"Блок Scope '{block.id}' не имеет подключенного входа."])
-        label = str(block.parameters.get("label") or block.id)
+        requested_label = str(block.parameters.get("label") or "").strip()
+        label = requested_label or block.id
+        reference = (
+            get_numeric_parameter(block.parameters, "reference", 0.0)
+            if "reference" in block.parameters
+            else None
+        )
         scopes.append(
             ScopeBinding(
                 scope_id=block.id,
                 label=label,
                 source_block=source[0],
                 source_port=source[1],
+                reference=reference,
             )
         )
     return scopes
@@ -368,11 +503,19 @@ def compile_diagram(diagram: Diagram) -> CompiledDiagram:
     if errors:
         raise DiagramCompilationError(errors)
 
+    try:
+        diagram = flatten_diagram(diagram)
+    except ValueError as exc:
+        raise DiagramCompilationError([f"Ошибка иерархии подсистем: {exc}"]) from exc
+
     blocks_by_id = {block.id: block for block in diagram.blocks}
     incoming = _build_incoming_map(diagram)
     static_order = _build_static_order(diagram)
-    dynamic_state_slices, initial_state = _build_dynamic_state(diagram)
     transfer_functions = _build_transfer_function_models(diagram)
+    dynamic_state_slices, initial_state = _build_dynamic_state(
+        diagram,
+        transfer_functions,
+    )
     scopes = _build_scopes(diagram, incoming)
 
     return CompiledDiagram(

@@ -1,10 +1,15 @@
 import type { CSSProperties } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
-import { blockTypeLabel, normalizedSigns, type BlockNodeData } from "../types/diagram";
+import {
+  blockTypeLabel,
+  normalizedSigns,
+  subsystemDisplayName,
+  type BlockNodeData,
+} from "../types/diagram";
 
-const SUM_MIN_HEIGHT = 96;
-const SUM_HEADER_HEIGHT = 52;
-const SUM_ROW_HEIGHT = 28;
+const SUM_MIN_HEIGHT = 104;
+const SUM_HEADER_HEIGHT = 40;
+const SUM_ROW_HEIGHT = 24;
 const SUM_BOTTOM_PADDING = 16;
 
 function verticalOffset(index: number, count: number): string {
@@ -15,28 +20,41 @@ function verticalOffset(index: number, count: number): string {
 function sumHeight(inputCount: number): number {
   return Math.max(
     SUM_MIN_HEIGHT,
-    SUM_HEADER_HEIGHT + Math.max(inputCount, 1) * SUM_ROW_HEIGHT + SUM_BOTTOM_PADDING
+    SUM_HEADER_HEIGHT + Math.max(inputCount, 1) * SUM_ROW_HEIGHT + SUM_BOTTOM_PADDING,
   );
 }
 
-function sumInputTop(index: number): string {
-  return `${SUM_HEADER_HEIGHT + index * SUM_ROW_HEIGHT + SUM_ROW_HEIGHT / 2}px`;
+function sumMainBusTop(inputCount: number): number {
+  return sumHeight(inputCount) / 2;
+}
+
+function sumInputTop(index: number, inputCount: number): string {
+  const mainBusTop = sumMainBusTop(inputCount);
+  if (index === 0) {
+    return `${mainBusTop}px`;
+  }
+
+  const distance = Math.ceil(index / 2) * SUM_ROW_HEIGHT;
+  const direction = index % 2 === 1 ? 1 : -1;
+  return `${mainBusTop + direction * distance}px`;
 }
 
 function sumOutputTop(inputCount: number): string {
-  return `${SUM_HEADER_HEIGHT + (Math.max(inputCount, 1) * SUM_ROW_HEIGHT) / 2}px`;
+  return `${sumMainBusTop(inputCount)}px`;
 }
 
 function portTop(
   data: BlockNodeData,
   side: "input" | "output",
   index: number,
-  count: number
+  count: number,
 ): string {
   if (data.blockType !== "Sum") {
     return verticalOffset(index, count);
   }
-  return side === "input" ? sumInputTop(index) : sumOutputTop(data.inputPorts.length);
+  return side === "input"
+    ? sumInputTop(index, data.inputPorts.length)
+    : sumOutputTop(data.inputPorts.length);
 }
 
 function inputLabel(data: BlockNodeData, port: string, index: number): string {
@@ -44,7 +62,11 @@ function inputLabel(data: BlockNodeData, port: string, index: number): string {
     return port;
   }
   const signs = normalizedSigns(data.parameters.signs);
-  return `${signs[index] ?? "+"} ${port}`;
+  return signs[index] ?? "+";
+}
+
+function isGenericPortLabel(_data: BlockNodeData, port: string): boolean {
+  return port === "in" || port === "out";
 }
 
 function nodeStyle(data: BlockNodeData): CSSProperties | undefined {
@@ -55,13 +77,127 @@ function nodeStyle(data: BlockNodeData): CSSProperties | undefined {
   return { height, minHeight: height };
 }
 
+function blockFormula(data: BlockNodeData): string {
+  switch (data.blockType) {
+    case "StepInput":
+      return "u(t)";
+    case "Gain":
+      return "K";
+    case "Sum":
+      return "Σ";
+    case "Integrator":
+      return "1/s";
+    case "FirstOrderLag":
+      return "K/(Ts+1)";
+    case "SecondOrderOscillator":
+      return "W₂(s)";
+    case "TransferFunction":
+      return "W(s)";
+    case "ButterworthLPF":
+      return "LPF";
+    case "PIDController":
+      return "PID";
+    case "Subsystem":
+      return "SUB";
+    case "SubsystemInput":
+      return "IN";
+    case "SubsystemOutput":
+      return "OUT";
+    case "Scope":
+      return "y(t)";
+  }
+}
+
+function blockGlyph(data: BlockNodeData): string {
+  switch (data.blockType) {
+    case "StepInput":
+      return "u(t)";
+    case "Gain":
+      return "K";
+    case "Sum":
+      return "Σ";
+    case "Integrator":
+      return "∫";
+    case "FirstOrderLag":
+      return "1°";
+    case "SecondOrderOscillator":
+      return "2°";
+    case "TransferFunction":
+      return "W";
+    case "ButterworthLPF":
+      return "LPF";
+    case "PIDController":
+      return "PID";
+    case "Subsystem":
+      return "SUB";
+    case "SubsystemInput":
+      return "IN";
+    case "SubsystemOutput":
+      return "OUT";
+    case "Scope":
+      return "y(t)";
+  }
+}
+
+function subsystemMeta(data: BlockNodeData): string {
+  const inputs = data.inputPorts.length;
+  const outputs = data.outputPorts.length;
+  if (inputs === 1 && outputs === 1) {
+    return `${data.inputPorts[0]}  →  ${data.outputPorts[0]}`;
+  }
+  return `${inputs} IN  →  ${outputs} OUT`;
+}
+
+function blockDisplayName(data: BlockNodeData): string {
+  if (data.blockType === "Subsystem") {
+    return subsystemDisplayName(data.parameters, data.blockId);
+  }
+  const customName = data.parameters.name;
+  if (typeof customName === "string" && customName.trim().length > 0) {
+    return customName.trim();
+  }
+  return blockTypeLabel(data.blockType);
+}
+
+function blockTypeCode(data: BlockNodeData): string {
+  switch (data.blockType) {
+    case "StepInput":
+    case "SubsystemInput":
+      return "SOURCE";
+    case "Scope":
+    case "SubsystemOutput":
+      return "SINK";
+    case "Sum":
+    case "Gain":
+      return "OPERATOR";
+    case "Integrator":
+    case "FirstOrderLag":
+    case "SecondOrderOscillator":
+    case "TransferFunction":
+    case "ButterworthLPF":
+      return "DYNAMICS";
+    case "PIDController":
+      return "CONTROL";
+    case "Subsystem":
+      return "SUBSYSTEM";
+  }
+}
+
 export function BlockNode({ data }: NodeProps<BlockNodeData>) {
+  const isSubsystem = data.blockType === "Subsystem";
+  const title = blockDisplayName(data);
+  const connectivityClass = [
+    data.inputPorts.length > 0 ? "block-node--has-input" : "block-node--no-input",
+    data.outputPorts.length > 0 ? "block-node--has-output" : "block-node--no-output",
+  ].join(" ");
+
   return (
     <div
-      className="block-node"
+      className={`block-node ${connectivityClass}`}
       data-testid={`node-${data.blockId}`}
       data-block-type={data.blockType}
       style={nodeStyle(data)}
+      title={isSubsystem ? "Двойное нажатие — открыть следующий уровень" : undefined}
     >
       {data.inputPorts.map((port, index) => (
         <Handle
@@ -78,7 +214,7 @@ export function BlockNode({ data }: NodeProps<BlockNodeData>) {
       {data.inputPorts.map((port, index) => (
         <div
           key={`${data.blockId}-${port}-label`}
-          className="block-node__port-label block-node__port-label--input"
+          className={`block-node__port-label block-node__port-label--input ${isGenericPortLabel(data, port) ? "is-generic" : ""}`}
           style={{ top: portTop(data, "input", index, data.inputPorts.length) }}
           title={`${data.blockId}.${port} input`}
         >
@@ -86,16 +222,29 @@ export function BlockNode({ data }: NodeProps<BlockNodeData>) {
         </div>
       ))}
 
-      <div className="block-node__title">{blockTypeLabel(data.blockType)}</div>
-      <div className="block-node__id">{data.blockId}</div>
-      <div className="block-node__ports">
-        in:{data.inputPorts.length} / out:{data.outputPorts.length}
+      <div className={`block-node__body ${isSubsystem ? "block-node__body--subsystem" : ""}`}>
+        <div className="block-node__glyph" title={blockFormula(data)} aria-hidden="true">
+          <span>{blockGlyph(data)}</span>
+        </div>
+        <div className="block-node__copy">
+          <div className="block-node__topline">
+            <span className="block-node__type-code">{blockTypeCode(data)}</span>
+            <span className="block-node__index">{data.blockId}</span>
+          </div>
+          <div className="block-node__title" title={title}>{title}</div>
+          <div className="block-node__meta">
+            <div className={isSubsystem ? "subsystem-node__ports" : "block-node__id"}>
+              {isSubsystem ? subsystemMeta(data) : blockFormula(data)}
+            </div>
+          </div>
+        </div>
+        <span className="block-node__cursor" aria-hidden="true">→</span>
       </div>
 
       {data.outputPorts.map((port, index) => (
         <div
           key={`${data.blockId}-${port}-label`}
-          className="block-node__port-label block-node__port-label--output"
+          className={`block-node__port-label block-node__port-label--output ${isGenericPortLabel(data, port) ? "is-generic" : ""}`}
           style={{ top: portTop(data, "output", index, data.outputPorts.length) }}
           title={`${data.blockId}.${port} output`}
         >

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 
+from pydantic import ValidationError
+
 from app.core.block_specs import (
     KNOWN_BLOCK_TYPES,
     expected_input_ports,
@@ -10,6 +12,7 @@ from app.core.block_specs import (
     validate_parameters,
 )
 from app.models.diagram import Block, Diagram
+from app.simulation.hierarchy import flatten_diagram
 
 
 def _find_cycle(adjacency: dict[str, set[str]]) -> list[str] | None:
@@ -59,7 +62,7 @@ def _block_lookup(blocks: list[Block]) -> tuple[dict[str, Block], list[str]]:
     return by_id, errors
 
 
-def validate_diagram(diagram: Diagram) -> list[str]:
+def _validate_level(diagram: Diagram, *, allow_interface_blocks: bool) -> list[str]:
     errors: list[str] = []
     blocks_by_id, id_errors = _block_lookup(diagram.blocks)
     errors.extend(id_errors)
@@ -70,6 +73,11 @@ def validate_diagram(diagram: Diagram) -> list[str]:
         if block.type not in KNOWN_BLOCK_TYPES:
             errors.append(f"Блок '{block.id}' имеет неизвестный тип '{block.type}'.")
             continue
+
+        if block.type in {"SubsystemInput", "SubsystemOutput"} and not allow_interface_blocks:
+            errors.append(
+                f"Блок '{block.id}' типа '{block.type}' допустим только внутри Subsystem."
+            )
 
         param_errors = validate_parameters(block.type, block.parameters)
         errors.extend([f"Блок '{block.id}': {message}" for message in param_errors])
@@ -86,6 +94,32 @@ def validate_diagram(diagram: Diagram) -> list[str]:
             errors.append(
                 f"Блок '{block.id}': выходные порты должны быть {expected_outputs}, получено {block.output_ports}."
             )
+
+        if block.type == "Subsystem" and isinstance(block.parameters.get("diagram"), dict):
+            try:
+                nested = Diagram.model_validate(block.parameters["diagram"])
+            except ValidationError as exc:
+                errors.append(f"Подсистема '{block.id}': некорректный формат: {exc}")
+            else:
+                nested_errors = _validate_level(nested, allow_interface_blocks=True)
+                errors.extend(
+                    [f"Подсистема '{block.id}': {message}" for message in nested_errors]
+                )
+
+    scope_labels: dict[str, str] = {}
+    for block in diagram.blocks:
+        if block.type != "Scope":
+            continue
+        requested_label = str(block.parameters.get("label") or "").strip()
+        effective_label = requested_label or block.id
+        previous_block = scope_labels.get(effective_label)
+        if previous_block is not None:
+            errors.append(
+                f"Блоки Scope '{previous_block}' и '{block.id}' используют одинаковое "
+                f"имя сигнала '{effective_label}'."
+            )
+        else:
+            scope_labels[effective_label] = block.id
 
     incoming_count: dict[tuple[str, str], int] = defaultdict(int)
     valid_refs: list[tuple[str, str]] = []
@@ -153,6 +187,19 @@ def validate_diagram(diagram: Diagram) -> list[str]:
         )
 
     return errors
+
+
+def validate_diagram(diagram: Diagram) -> list[str]:
+    hierarchy_errors = _validate_level(diagram, allow_interface_blocks=False)
+    if hierarchy_errors:
+        return hierarchy_errors
+
+    try:
+        flattened = flatten_diagram(diagram)
+    except (ValueError, ValidationError) as exc:
+        return [f"Ошибка иерархии подсистем: {exc}"]
+
+    return _validate_level(flattened, allow_interface_blocks=False)
 
 
 def static_topological_sort(
