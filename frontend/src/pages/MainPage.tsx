@@ -26,9 +26,13 @@ import ReactFlow, {
   useReactFlow,
 } from "reactflow";
 import {
+  ApiError,
+  createServerProject,
+  getServerProject,
   simulateDiagram,
-  SimulationApiError,
+  updateServerProject,
   validateDiagram,
+  type ServerProjectPayload,
 } from "../api/client";
 import {
   MAX_PROJECT_FILE_SIZE_BYTES,
@@ -42,6 +46,7 @@ import {
   DiagnosticsPanel,
   type DiagnosticIssue as PanelDiagnosticIssue,
   type DiagnosticProgressItem,
+  type DiagnosticProgressStatus,
   type DiagnosticResult,
   type DiagnosticsRunState,
   type DiagnosticsTab,
@@ -57,17 +62,12 @@ import {
 import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
 import { WorkspaceRail } from "../components/workspace/WorkspaceRail";
 import { FeedbackEdge, SignalEdge } from "../components/DiagramEdges";
-import {
-  createServerProject,
-  getServerProject,
-  updateServerProject,
-  type ServerProjectPayload,
-} from "../api/projects";
 import { BlockNode } from "../nodes/BlockNode";
 import { layoutDiagram } from "../features/diagramLayout";
 import {
   diagnoseDiagram,
   diagnoseFlowModel,
+  type DiagnosticCode,
   type ModelDiagnosticIssue,
 } from "../features/modelDiagnostics";
 import { routeDiagramEdges } from "../features/edgeRouting";
@@ -109,6 +109,59 @@ interface HierarchyFrame {
   parentNodeCounter: number;
   parentViewport: Viewport;
 }
+interface HierarchyLevel {
+  nodes: DiagramNode[];
+  edges: Edge[];
+  viewport: Viewport;
+  nodeCounter: number;
+}
+
+/**
+ * Write the open level back into its parents up to `targetDepth`: each
+ * Subsystem receives the child diagram and its layout, and parent edges to
+ * interface ports that no longer exist are dropped.
+ */
+function foldHierarchy(stack: HierarchyFrame[], open: HierarchyLevel, targetDepth: number): HierarchyLevel {
+  let child = open;
+  for (let index = stack.length - 1; index >= targetDepth; index -= 1) {
+    const frame = stack[index];
+    const parentNodes = frame.parentNodes.map((parentNode) => {
+      if (parentNode.id !== frame.subsystemId) {
+        return parentNode;
+      }
+      const parameters = {
+        ...parentNode.data.parameters,
+        diagram: diagramFromFlow(child.nodes, child.edges),
+        layout: { positions: positionsFromNodes(child.nodes), viewport: child.viewport },
+      };
+      return {
+        ...parentNode,
+        data: {
+          ...parentNode.data,
+          parameters,
+          inputPorts: inputPortsFor("Subsystem", parameters),
+          outputPorts: outputPortsFor("Subsystem", parameters),
+        },
+      };
+    });
+    const subsystemNode = parentNodes.find((node) => node.id === frame.subsystemId);
+    const allowedInputs = new Set(subsystemNode?.data.inputPorts ?? []);
+    const allowedOutputs = new Set(subsystemNode?.data.outputPorts ?? []);
+    const parentEdges = frame.parentEdges.filter((edge) => {
+      if (edge.target === frame.subsystemId && !allowedInputs.has(edge.targetHandle ?? "in")) return false;
+      if (edge.source === frame.subsystemId && !allowedOutputs.has(edge.sourceHandle ?? "out")) return false;
+      return true;
+    });
+    child = {
+      nodes: parentNodes,
+      edges: parentEdges,
+      viewport: frame.parentViewport,
+      nodeCounter: frame.parentNodeCounter,
+    };
+  }
+  return child;
+}
+
 const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
   type: "signal",
 };
@@ -703,31 +756,18 @@ function ModelingWorkspace() {
     }
   }
 
+  function openLevel(): HierarchyLevel {
+    return { nodes: nodes as DiagramNode[], edges, viewport: getViewport(), nodeCounter };
+  }
+
+  /** The complete root diagram, including unsaved edits of the open level. */
+  function rootLevel(): HierarchyLevel {
+    return foldHierarchy(hierarchyStack, openLevel(), 0);
+  }
+
   function diagramWithCurrentHierarchy(): Diagram {
-    let currentDiagram = diagramFromFlow(nodes as DiagramNode[], edges);
-    for (let index = hierarchyStack.length - 1; index >= 0; index -= 1) {
-      const frame = hierarchyStack[index];
-      const parentNodes = frame.parentNodes.map((parentNode) => {
-        if (parentNode.id !== frame.subsystemId) {
-          return parentNode;
-        }
-        const parameters = {
-          ...parentNode.data.parameters,
-          diagram: currentDiagram,
-        };
-        return {
-          ...parentNode,
-          data: {
-            ...parentNode.data,
-            parameters,
-            inputPorts: inputPortsFor("Subsystem", parameters),
-            outputPorts: outputPortsFor("Subsystem", parameters),
-          },
-        };
-      });
-      currentDiagram = diagramFromFlow(parentNodes, frame.parentEdges);
-    }
-    return currentDiagram;
+    const root = rootLevel();
+    return diagramFromFlow(root.nodes, root.edges);
   }
 
   function enterSubsystem(nodeId: string) {
@@ -784,57 +824,13 @@ function ModelingWorkspace() {
       return;
     }
 
-    let childNodes = nodes as DiagramNode[];
-    let childEdges = edges;
-    let childViewport = getViewport();
-    let restoredCounter = nodeCounter;
-
-    for (let index = hierarchyStack.length - 1; index >= targetDepth; index -= 1) {
-      const frame = hierarchyStack[index];
-      const nestedDiagram = diagramFromFlow(childNodes, childEdges);
-      const nestedLayout = {
-        positions: positionsFromNodes(childNodes),
-        viewport: childViewport,
-      };
-      const parentNodes = frame.parentNodes.map((parentNode) => {
-        if (parentNode.id !== frame.subsystemId) {
-          return parentNode;
-        }
-        const parameters = {
-          ...parentNode.data.parameters,
-          diagram: nestedDiagram,
-          layout: nestedLayout,
-        };
-        return {
-          ...parentNode,
-          data: {
-            ...parentNode.data,
-            parameters,
-            inputPorts: inputPortsFor("Subsystem", parameters),
-            outputPorts: outputPortsFor("Subsystem", parameters),
-          },
-        };
-      });
-      const subsystemNode = parentNodes.find((node) => node.id === frame.subsystemId);
-      const allowedInputs = new Set(subsystemNode?.data.inputPorts ?? []);
-      const allowedOutputs = new Set(subsystemNode?.data.outputPorts ?? []);
-      const parentEdges = frame.parentEdges.filter((edge) => {
-        if (edge.target === frame.subsystemId && !allowedInputs.has(edge.targetHandle ?? "in")) return false;
-        if (edge.source === frame.subsystemId && !allowedOutputs.has(edge.sourceHandle ?? "out")) return false;
-        return true;
-      });
-
-      childNodes = parentNodes;
-      childEdges = parentEdges;
-      childViewport = frame.parentViewport;
-      restoredCounter = frame.parentNodeCounter;
-    }
+    const parent = foldHierarchy(hierarchyStack, openLevel(), targetDepth);
 
     const selectedSubsystemId = hierarchyStack[targetDepth].subsystemId;
     setHierarchyStack((current) => current.slice(0, targetDepth));
-    setNodes(childNodes);
-    setEdges(childEdges);
-    setNodeCounter(restoredCounter);
+    setNodes(parent.nodes);
+    setEdges(parent.edges);
+    setNodeCounter(parent.nodeCounter);
     setSelectedNodeId(selectedSubsystemId);
     setInspectorView("block");
     setIsInspectorOpen(true);
@@ -843,7 +839,7 @@ function ModelingWorkspace() {
     setErrors([]);
     setInfo(`Изменения уровня сохранены. Открыт уровень ${targetDepth}.`);
     window.setTimeout(() => {
-      void setViewport(childViewport, { duration: 180 });
+      void setViewport(parent.viewport, { duration: 180 });
       updateNodeInternals(selectedSubsystemId);
     }, 0);
   }
@@ -870,13 +866,11 @@ function ModelingWorkspace() {
       return;
     }
 
-    const diagram = diagramWithCurrentHierarchy();
-    const rootNodes = hierarchyStack[0]?.parentNodes ?? (nodes as DiagramNode[]);
-    const rootViewport = hierarchyStack[0]?.parentViewport ?? getViewport();
+    const root = rootLevel();
     const project = createDiagramProject({
-      diagram,
-      positions: positionsFromNodes(rootNodes),
-      viewport: rootViewport,
+      diagram: diagramFromFlow(root.nodes, root.edges),
+      positions: positionsFromNodes(root.nodes),
+      viewport: root.viewport,
       simulation: {
         solver,
         t_start: 0,
@@ -890,13 +884,12 @@ function ModelingWorkspace() {
   }
 
   function currentServerPayload(): ServerProjectPayload {
-    const rootNodes = hierarchyStack[0]?.parentNodes ?? (nodes as DiagramNode[]);
-    const rootViewport = hierarchyStack[0]?.parentViewport ?? getViewport();
+    const root = rootLevel();
     return {
-      diagram: diagramWithCurrentHierarchy(),
+      diagram: diagramFromFlow(root.nodes, root.edges),
       layout: {
-        positions: positionsFromNodes(rootNodes),
-        viewport: rootViewport,
+        positions: positionsFromNodes(root.nodes),
+        viewport: root.viewport,
       },
       simulation: {
         solver,
@@ -938,7 +931,16 @@ function ModelingWorkspace() {
       setServerProjectVersion(record.version);
       setInfo(`Серверный проект обновлён до версии ${record.version}.`);
     } catch (saveError) {
-      setErrors([saveError instanceof Error ? saveError.message : "Не удалось сохранить проект на сервере."]);
+      if (saveError instanceof ApiError && saveError.status === 409) {
+        const serverVersion = saveError.payload.current_version;
+        setErrors([
+          `Проект изменён в другой сессии (на сервере версия ${String(serverVersion)}). `
+          + "Откройте актуальную версию или сохраните текущую схему как новый проект.",
+        ]);
+        setIsServerProjectsOpen(true);
+      } else {
+        setErrors(saveError instanceof ApiError ? saveError.messages : ["Не удалось сохранить проект на сервере."]);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -977,7 +979,7 @@ function ModelingWorkspace() {
         else void fitView({ padding: 0.1, duration: 250, maxZoom: 1 });
       }, 0);
     } catch (openError) {
-      setErrors([openError instanceof Error ? openError.message : "Не удалось открыть серверный проект."]);
+      setErrors(openError instanceof ApiError ? openError.messages : ["Не удалось открыть серверный проект."]);
     } finally {
       setIsBusy(false);
     }
@@ -1100,168 +1102,122 @@ function ModelingWorkspace() {
     return report;
   }
 
+  function showRunProgress(structure: StepStatus, server: StepStatus, serverLabel: string) {
+    setDiagnosticsProgress([
+      { id: "structure", label: "Проверка структуры", status: structure[0], detail: structure[1] },
+      { id: "server", label: serverLabel, status: server[0], detail: server[1] },
+    ]);
+  }
+
+  function reportFailure(error: unknown, idPrefix: string) {
+    const apiError = error instanceof ApiError ? error : null;
+    const messages = apiError?.messages ?? [error instanceof Error ? error.message : "Неизвестная ошибка."];
+    const code: DiagnosticCode = !apiError
+      ? "server-error"
+      : apiError.code === "server_unreachable"
+        ? "server-unreachable"
+        : apiError.code === "diagram_invalid"
+          ? "model-rejected"
+          : apiError.code === "solver_settings" || apiError.code === "solver_failed"
+            ? "solver-error"
+            : apiError.code === "request_invalid" ? "settings-invalid" : "server-error";
+    setErrors(messages);
+    setDiagnosticsIssues((current) => [
+      ...current.filter((issue) => issue.code !== "model-ready"),
+      ...messages.map((message, index): ModelDiagnosticIssue => ({
+        id: `${idPrefix}-${index}`, code, severity: "error", message, scopePath: [],
+      })),
+    ]);
+    setDiagnosticsState("error");
+    setDiagnosticsTab("issues");
+    setIsDiagnosticsCollapsed(false);
+  }
+
+  function openDiagnosticsDock() {
+    setScopeHeightPx((current) => Math.min(current, 280));
+    setIsScopeOpen(true);
+    setIsDiagnosticsCollapsed(false);
+  }
+
   async function runValidation() {
+    const serverLabel = "Сборка модели на сервере";
     setIsLibraryCollapsed(true);
     setIsInspectorOpen(false);
     setInfo("");
     setResult(null);
     setDiagnosticsState("validating");
     setDiagnosticsTab("progress");
-    setDiagnosticsProgress([
-      { id: "structure", label: "Проверка структуры", status: "active", detail: "Соединения и обязательные порты" },
-      { id: "backend", label: "Проверка модели", status: "pending", detail: "Иерархия и алгебраические петли" },
-      { id: "solver", label: "Численный расчёт", status: "pending", detail: "Запускается отдельно" },
-    ]);
-    setScopeHeightPx((current) => Math.min(current, 280));
-    setIsScopeOpen(true);
-    setIsDiagnosticsCollapsed(false);
+    showRunProgress(["active", "Соединения и обязательные порты"], ["pending"], serverLabel);
+    openDiagnosticsDock();
     const diagram = diagramWithCurrentHierarchy();
-    const preflight = runPreflight(diagram);
-    if (!preflight.canRun) {
+    if (!runPreflight(diagram).canRun) {
       setDiagnosticsState("error");
       setDiagnosticsTab("issues");
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "error", detail: "Найдены ошибки" },
-        { id: "backend", label: "Проверка модели", status: "pending" },
-        { id: "solver", label: "Численный расчёт", status: "pending" },
-      ]);
+      showRunProgress(["error", "Найдены ошибки"], ["pending"], serverLabel);
       return;
     }
+    showRunProgress(["done"], ["active", "Иерархия, петли, матрицы A, B, C, D"], serverLabel);
     try {
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "done" },
-        { id: "backend", label: "Проверка модели", status: "active", detail: "Проверяется серверная модель" },
-        { id: "solver", label: "Численный расчёт", status: "pending" },
-      ]);
       const response = await validateDiagram(diagram);
-      if (response.valid) {
-        setErrors([]);
-        setDiagnosticsState("success");
-        setDiagnosticsTab("issues");
-        setDiagnosticsProgress([
-          { id: "structure", label: "Проверка структуры", status: "done" },
-          { id: "backend", label: "Проверка модели", status: "done" },
-          { id: "solver", label: "Численный расчёт", status: "pending", detail: "Модель готова к запуску" },
-        ]);
-        setInfo("Схема корректна: сервер собрал единую модель.");
-      } else {
-        const messages = response.errors;
-        setErrors(messages);
-        setDiagnosticsIssues((current) => [
-          ...current.filter((issue) => issue.code !== "model-ready"),
-          ...messages.map((message, index): ModelDiagnosticIssue => ({
-            id: `backend-validation-${index}`,
-            code: "port-mismatch",
-            severity: "error",
-            message,
-            scopePath: [],
-          })),
-        ]);
-        setDiagnosticsState("error");
-        setDiagnosticsTab("issues");
-        setDiagnosticsProgress([
-          { id: "structure", label: "Проверка структуры", status: "done" },
-          { id: "backend", label: "Проверка модели", status: "error", detail: "Сервер отклонил схему" },
-          { id: "solver", label: "Численный расчёт", status: "pending" },
-        ]);
-        setInfo("");
+      if (!response.valid) {
+        throw new ApiError("Схема содержит ошибки.", 422, "diagram_invalid", response.errors);
       }
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "Не удалось выполнить проверку схемы.";
-      setErrors([message]);
-      setDiagnosticsIssues((current) => [
-        ...current.filter((issue) => issue.code !== "model-ready"),
-        { id: "backend-unavailable", code: "port-mismatch", severity: "error", message, scopePath: [] },
-      ]);
-      setDiagnosticsState("error");
+      setErrors([]);
+      setDiagnosticsState("success");
       setDiagnosticsTab("issues");
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "done" },
-        { id: "backend", label: "Проверка модели", status: "error", detail: "Нет ответа от сервера" },
-        { id: "solver", label: "Численный расчёт", status: "pending" },
-      ]);
+      showRunProgress(["done"], ["done", "Модель готова к расчёту"], serverLabel);
+      setInfo("Схема корректна: сервер собрал единую модель.");
+    } catch (error) {
+      reportFailure(error, "validation-error");
+      showRunProgress(["done"], ["error", "Сервер отклонил схему"], serverLabel);
     }
   }
 
   async function runSimulation() {
+    const serverLabel = "Сборка модели и расчёт";
     setScopeTab("plot");
     setIsLibraryCollapsed(true);
     setIsInspectorOpen(false);
-    if (dt <= 0 || tEnd <= 0) {
-      const message = "Параметры моделирования должны удовлетворять условиям: t_end > 0 и dt > 0.";
-      setErrors([message]);
-      setDiagnosticsIssues([{
-        id: "simulation-range",
-        code: "invalid-parameter",
-        severity: "error",
-        message,
-        scopePath: [],
-      }]);
-      setDiagnosticsState("error");
-      setDiagnosticsTab("issues");
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "pending" },
-        { id: "backend", label: "Проверка модели", status: "pending" },
-        { id: "solver", label: "Численный расчёт", status: "error", detail: "Проверьте t_end и dt" },
-      ]);
-      setScopeHeightPx((current) => Math.min(current, 280));
-      setIsScopeOpen(true);
-      setIsDiagnosticsCollapsed(false);
-      return;
-    }
-
     setInfo("");
     setErrors([]);
     setResult(null);
-    setDiagnosticsState("validating");
-    setDiagnosticsTab("progress");
-    setDiagnosticsProgress([
-      { id: "structure", label: "Проверка структуры", status: "active", detail: "Соединения и параметры блоков" },
-      { id: "backend", label: "Подготовка модели", status: "pending" },
-      { id: "solver", label: "Численный расчёт", status: "pending" },
-    ]);
     setInspectorView("simulation");
-    setScopeHeightPx((current) => Math.min(current, 280));
-    setIsScopeOpen(true);
-    setIsDiagnosticsCollapsed(false);
-    const diagram = diagramWithCurrentHierarchy();
-    const preflight = runPreflight(diagram);
-    if (!preflight.canRun) {
+    openDiagnosticsDock();
+    if (dt <= 0 || tEnd <= 0) {
+      setDiagnosticsIssues([{
+        id: "simulation-range",
+        code: "settings-invalid",
+        severity: "error",
+        message: "Параметры моделирования должны удовлетворять условиям: t_end > 0 и dt > 0.",
+        scopePath: [],
+      }]);
+      setErrors(["Параметры моделирования должны удовлетворять условиям: t_end > 0 и dt > 0."]);
       setDiagnosticsState("error");
       setDiagnosticsTab("issues");
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "error", detail: "Исправьте отмеченные блоки" },
-        { id: "backend", label: "Подготовка модели", status: "pending" },
-        { id: "solver", label: "Численный расчёт", status: "pending" },
-      ]);
+      showRunProgress(["pending"], ["error", "Проверьте t_end и dt"], serverLabel);
+      return;
+    }
+
+    setDiagnosticsState("validating");
+    setDiagnosticsTab("progress");
+    showRunProgress(["active", "Соединения и параметры блоков"], ["pending"], serverLabel);
+    const diagram = diagramWithCurrentHierarchy();
+    if (!runPreflight(diagram).canRun) {
+      setDiagnosticsState("error");
+      setDiagnosticsTab("issues");
+      showRunProgress(["error", "Исправьте отмеченные блоки"], ["pending"], serverLabel);
       return;
     }
 
     setDiagnosticsState("running");
-    setDiagnosticsProgress([
-      { id: "structure", label: "Проверка структуры", status: "done" },
-      { id: "backend", label: "Подготовка модели", status: "done" },
-      { id: "solver", label: "Численный расчёт", status: "active", detail: solver === "solve_ivp" ? "Adaptive RK45" : "Fixed-step RK4" },
-    ]);
+    showRunProgress(["done"], ["active", solver === "solve_ivp" ? "Адаптивный RK45" : "RK4 с постоянным шагом"], serverLabel);
     setIsBusy(true);
     try {
-      const response = await simulateDiagram({
-        diagram,
-        t_start: 0,
-        t_end: tEnd,
-        dt,
-        solver,
-      });
+      const response = await simulateDiagram({ diagram, t_start: 0, t_end: tEnd, dt, solver });
       setResult(response);
       setDiagnosticsState("success");
       setDiagnosticsTab("results");
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "done" },
-        { id: "backend", label: "Подготовка модели", status: "done" },
-        { id: "solver", label: "Численный расчёт", status: "done", detail: `${response.time.length} точек` },
-      ]);
+      showRunProgress(["done"], ["done", `${response.time.length} точек`], serverLabel);
       setScopeHeightPx((current) => Math.max(current, 400));
       setIsDiagnosticsCollapsed(true);
       window.requestAnimationFrame(() => {
@@ -1271,33 +1227,12 @@ function ModelingWorkspace() {
       });
     } catch (error) {
       setResult(null);
-      const messages = error instanceof SimulationApiError
-        ? (error.validationErrors.length > 0 ? error.validationErrors : [error.message])
-        : [error instanceof Error ? error.message : "Не удалось выполнить моделирование."];
-      setErrors(messages);
-      setDiagnosticsIssues((current) => [
-        ...current.filter((issue) => issue.code !== "model-ready"),
-        ...messages.map((message, index): ModelDiagnosticIssue => ({
-          id: `simulation-error-${index}`,
-          code: "invalid-parameter",
-          severity: "error",
-          message,
-          scopePath: [],
-        })),
-      ]);
-      setDiagnosticsState("error");
-      setDiagnosticsTab("issues");
-      setDiagnosticsProgress([
-        { id: "structure", label: "Проверка структуры", status: "done" },
-        { id: "backend", label: "Подготовка модели", status: "done" },
-        { id: "solver", label: "Численный расчёт", status: "error", detail: "Расчёт остановлен" },
-      ]);
-      setIsDiagnosticsCollapsed(false);
+      reportFailure(error, "simulation-error");
+      showRunProgress(["done"], ["error", "Расчёт остановлен"], serverLabel);
     } finally {
       setIsBusy(false);
     }
   }
-
 
   function clearDiagram() {
     setNodes([]);
@@ -1692,6 +1627,8 @@ function ModelingWorkspace() {
     </main>
   );
 }
+
+type StepStatus = [DiagnosticProgressStatus, string?];
 
 export function MainPage() {
   return (

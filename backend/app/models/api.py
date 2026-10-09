@@ -75,4 +75,3 @@ class SimulationResponse(BaseModel):
     frequency_analysis: dict[str, Any] = Field(default_factory=dict)
     quality_metrics: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
-    validation_errors: list[str] = Field(default_factory=list)

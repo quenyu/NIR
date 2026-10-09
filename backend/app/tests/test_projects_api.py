@@ -60,11 +60,14 @@ def test_project_crud_and_optimistic_versioning(tmp_path: Path) -> None:
 
             conflict_response = client.put(f"/projects/{created['id']}", json=update_payload)
             assert conflict_response.status_code == 409
-            assert conflict_response.json()["detail"]["current_version"] == 2
+            assert conflict_response.json()["code"] == "project_conflict"
+            assert conflict_response.json()["current_version"] == 2
 
             delete_response = client.delete(f"/projects/{created['id']}")
             assert delete_response.status_code == 204
-            assert client.get(f"/projects/{created['id']}").status_code == 404
+            missing = client.get(f"/projects/{created['id']}")
+            assert missing.status_code == 404
+            assert missing.json()["code"] == "project_not_found"
     finally:
         app.dependency_overrides.pop(get_project_repository, None)
 
@@ -78,6 +81,6 @@ def test_server_rejects_invalid_project_diagram(tmp_path: Path) -> None:
         with TestClient(app) as client:
             response = client.post("/projects", json=request)
             assert response.status_code == 422
-            assert response.json()["detail"]
+            assert response.json()["code"] == "diagram_invalid"
     finally:
         app.dependency_overrides.pop(get_project_repository, None)

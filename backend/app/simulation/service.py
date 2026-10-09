@@ -12,6 +12,10 @@ from app.simulation.model import compile_model
 from app.simulation.solvers import rk4_integrate, solve_ivp_integrate
 
 
+class SolverSettingsError(ValueError):
+    """The requested solver settings cannot integrate this model reliably."""
+
+
 def build_time_grid(request: SimulationRequest) -> np.ndarray:
     if request.t_eval is not None:
         return np.array(request.t_eval, dtype=float)
@@ -46,7 +50,7 @@ def _integrate(
     grid = np.unique(np.concatenate((t_eval, np.asarray(breakpoints, dtype=float))))
     check = rk4_step_check(model.a, float(np.max(np.diff(grid))))
     if not check["stable"]:
-        raise ValueError(
+        raise SolverSettingsError(
             "Шаг RK4 вне области устойчивости метода для мод "
             f"{_format_modes(check['unstable_modes'])}: численное решение росло бы, "
             f"хотя сама система не неустойчива. Уменьшите dt до {check['max_step']:.3g} "
@@ -120,5 +124,4 @@ def simulate_request(request: SimulationRequest) -> SimulationResponse:
             references={s.label: s.reference for s in model.scopes if s.reference is not None},
         ),
         warnings=warnings,
-        validation_errors=[],
     )

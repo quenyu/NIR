@@ -209,6 +209,16 @@ export function diagnosticTitle(issue: ModelDiagnosticIssue): string {
       return "Нет сквозного пути";
     case "model-ready":
       return "Схема готова";
+    case "model-rejected":
+      return "Ошибка модели";
+    case "solver-error":
+      return "Ошибка численного расчёта";
+    case "settings-invalid":
+      return "Параметры расчёта";
+    case "server-unreachable":
+      return "Сервер недоступен";
+    case "server-error":
+      return "Ошибка сервера";
     default:
       return issue.severity === "error"
         ? "Ошибка структуры"

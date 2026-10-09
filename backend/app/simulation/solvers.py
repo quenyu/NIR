@@ -15,6 +15,10 @@ from scipy.linalg import expm
 
 Rhs = Callable[[float, np.ndarray], np.ndarray]
 
+
+class SolverError(RuntimeError):
+    """The integration could not produce a finite trajectory for this model."""
+
 SOLVE_IVP_RTOL = 1e-8
 SOLVE_IVP_ATOL = 1e-10
 
@@ -60,7 +64,7 @@ def rk4_integrate(
         k4 = rhs(k4_time, x + h * k3)
         x = x + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
         if not np.all(np.isfinite(x)):
-            raise FloatingPointError(f"RK4: состояние перестало быть конечным в момент t={right:g}.")
+            raise SolverError(f"RK4: состояние перестало быть конечным в момент t={right:g}.")
         trajectory[:, index + 1] = x
     return trajectory
 
@@ -96,13 +100,13 @@ def solve_ivp_integrate(
             rtol=SOLVE_IVP_RTOL, atol=SOLVE_IVP_ATOL, dense_output=True,
         )
         if not result.success or result.sol is None:
-            raise RuntimeError(f"solve_ivp завершился с ошибкой: {result.message}")
+            raise SolverError(f"solve_ivp завершился с ошибкой: {result.message}")
         mask = (t_eval > left) & (t_eval <= right)
         if np.any(mask):
             trajectory[:, mask] = result.sol(t_eval[mask])
         state = np.asarray(result.y[:, -1], dtype=float)
         if not np.all(np.isfinite(state)):
-            raise FloatingPointError(f"solve_ivp: состояние перестало быть конечным в момент t={right:g}.")
+            raise SolverError(f"solve_ivp: состояние перестало быть конечным в момент t={right:g}.")
         left = right
     return trajectory
 

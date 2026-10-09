@@ -33,7 +33,12 @@ export type DiagnosticCode =
   | "algebraic-loop"
   | "feedback-valid"
   | "nested-diagram-invalid"
-  | "model-ready";
+  | "model-ready"
+  | "model-rejected"
+  | "solver-error"
+  | "settings-invalid"
+  | "server-unreachable"
+  | "server-error";
 
 export interface ModelDiagnosticIssue {
   id: string;

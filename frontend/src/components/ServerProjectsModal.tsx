@@ -3,7 +3,8 @@ import {
   deleteServerProject,
   listServerProjects,
   type ServerProjectSummary,
-} from "../api/projects";
+  errorText,
+} from "../api/client";
 import { UiIcon } from "./UiIcon";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 
@@ -38,7 +39,7 @@ export function ServerProjectsModal({
     try {
       setProjects(await listServerProjects());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить проекты.");
+      setError(errorText(loadError, "Не удалось загрузить проекты."));
     } finally {
       setIsLoading(false);
     }
@@ -59,7 +60,7 @@ export function ServerProjectsModal({
       await onCreate(title.trim());
       await refresh();
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Не удалось создать проект.");
+      setError(errorText(createError, "Не удалось создать проект."));
     }
   }
 
@@ -69,7 +70,7 @@ export function ServerProjectsModal({
       if (projectId === currentProjectId) onCurrentDeleted();
       await refresh();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить проект.");
+      setError(errorText(deleteError, "Не удалось удалить проект."));
     }
   }
 
