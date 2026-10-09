@@ -111,6 +111,7 @@ def compute_quality_metrics(
         y_inf = steady_values.get(label)
         reference = None if references is None else references.get(label)
         row: dict[str, Any] = {
+            "step_time": float(t_step),
             "final_value": float(values[-1]) if values.size else None,
             "target_value": None if y_inf is None else float(y_inf),
             "target_source": None if y_inf is None else "model_steady_state",

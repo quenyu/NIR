@@ -141,6 +141,13 @@ kbd {
   background: var(--hairline-strong);
 }
 
+/* Field labels contain symbols (ζ, ω₀, y₀): sentence case, never upper-cased. */
+.hud-field__label {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+}
+
 .hud-note {
   color: var(--text-muted);
   font-family: var(--font-sans);
@@ -457,5 +464,10 @@ input[type="search"]::-webkit-search-cancel-button {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* SMIL motion ignores CSS animation settings. */
+  .has-flow .signal-spark {
+    display: none;
   }
 }

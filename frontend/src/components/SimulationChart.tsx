@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Plot from "./Plot";
-import { axis, PLOT_CONFIG, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, seriesColor } from "./plotTheme";
+import { axis, MARKER_COLOR, PLOT_CONFIG, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, seriesColor } from "./plotTheme";
 import type { SimulationResponse, SystemAnalysis } from "../types/api";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
+import { PoleMap } from "./simulation/PoleMap";
+import type { Diagram } from "../types/diagram";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { stabilityPresentation } from "../features/modelingWorkspace";
 import { CountUp } from "../features/motion/CountUp";
@@ -15,6 +17,11 @@ interface SimulationChartProps {
   result: SimulationResponse | null;
   /** The last successful run of the same diagram, drawn for comparison. */
   previousResult?: SimulationResponse | null;
+  /** A background recomputation during a parameter drag: no entrance animation. */
+  live?: boolean;
+  /** Root diagram of this result, for the root-locus sweep. */
+  diagram?: Diagram | null;
+  focusBlockId?: string | null;
   onClose?: () => void;
   requestedTab?: ScopeTab;
   onTabChange?: (tab: ScopeTab) => void;
@@ -49,6 +56,31 @@ function formatPole(pole: { real: number; imag: number }): string {
   return `${real} ${pole.imag >= 0 ? "+" : "−"} ${imagAbs}j`;
 }
 
+interface PlotClick {
+  points?: Array<{ x: number }>;
+  event?: MouseEvent;
+}
+
+/** y(t) by linear interpolation on the output grid. */
+function valueAt(time: number[], values: number[], t: number): number {
+  if (time.length === 0) return Number.NaN;
+  if (t <= time[0]) return values[0];
+  if (t >= time[time.length - 1]) return values[values.length - 1];
+  let low = 0;
+  let high = time.length - 1;
+  while (high - low > 1) {
+    const middle = (low + high) >> 1;
+    if (time[middle] <= t) low = middle;
+    else high = middle;
+  }
+  const ratio = (t - time[low]) / (time[high] - time[low]);
+  return values[low] + ratio * (values[high] - values[low]);
+}
+
+function formatCursor(value: number): string {
+  return Number.isFinite(value) ? Number.parseFloat(value.toPrecision(5)).toString() : "—";
+}
+
 function solverLabel(result: SimulationResponse): string {
   const used = result.metadata.used_solver;
   return used === "rk4" ? "RK4, постоянный шаг" : used === "static" ? "статическая модель" : "RK45 (solve_ivp)";
@@ -57,6 +89,9 @@ function solverLabel(result: SimulationResponse): string {
 export function SimulationChart({
   result,
   previousResult = null,
+  live = false,
+  diagram = null,
+  focusBlockId = null,
   onClose,
   requestedTab,
   onTabChange,
@@ -65,13 +100,32 @@ export function SimulationChart({
   const [channelIndex, setChannelIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPrevious, setShowPrevious] = useState(true);
+  // Oscilloscope cursors: click places the first, Shift+click the second.
+  const [cursors, setCursors] = useState<[number | null, number | null]>([null, null]);
   const expandedDialogRef = useDialogFocus<HTMLElement>(isExpanded, () => setIsExpanded(false));
   // The time plot draws its lines once per new result, not on resize or tab switches.
   const drawnResultRef = useRef<SimulationResponse | null>(null);
 
+  // Plotly drops plotly_click listeners when it re-creates the plot (react-plotly's onClick is
+  // lost the same way), so the listener is (re)attached whenever the pointer enters the plot.
+  const placeCursorRef = useRef<(event: PlotClick) => void>(() => {});
+  const clickListenerRef = useRef((event: PlotClick) => placeCursorRef.current(event));
+
+  function bindClicks(graph: Element | null) {
+    const target = graph as (Element & {
+      on?: (name: string, handler: (event: PlotClick) => void) => void;
+      _ev?: { listeners: (name: string) => unknown[] };
+    }) | null;
+    if (!target || typeof target.on !== "function") return;
+    if (target._ev?.listeners("plotly_click").includes(clickListenerRef.current)) return;
+    target.on("plotly_click", clickListenerRef.current);
+  }
+
   function drawOnce(graph: HTMLElement) {
+    bindClicks(graph);
     if (drawnResultRef.current === result) return;
     drawnResultRef.current = result;
+    if (live) return;
     // Plotly redraws once more after mounting (resize handler); animate the settled paths.
     window.setTimeout(() => drawPlotLines(graph), 60);
   }
@@ -122,6 +176,75 @@ export function SimulationChart({
     return [...previous, ...current];
   }, [result, previousResult, comparable, showPrevious]);
 
+  const probe = useMemo(() => {
+    if (!result?.success) return null;
+    const label = Object.keys(result.outputs)[0];
+    if (!label) return null;
+    const values = result.outputs[label];
+    const metrics = result.quality_metrics?.[label];
+    const read = (t: number | null) => (t === null ? null : { t, y: valueAt(result.time, values, t) });
+    return { label, values, metrics, first: read(cursors[0]), second: read(cursors[1]) };
+  }, [result, cursors]);
+
+  const cursorTraces = useMemo(() => {
+    if (!probe) return [];
+    const marks = [];
+    if (probe.second) {
+      marks.push({
+        x: [probe.second.t], y: [probe.second.y], type: "scatter", mode: "markers", hoverinfo: "skip", showlegend: false,
+        marker: { size: 8, color: "#000000", line: { color: "#f2f2f2", width: 1 } },
+      });
+    }
+    if (probe.first) {
+      marks.push({
+        x: [probe.first.t], y: [probe.first.y], type: "scatter", mode: "markers", hoverinfo: "skip", showlegend: false,
+        marker: { size: 8, color: MARKER_COLOR },
+      });
+    }
+    return marks;
+  }, [probe]);
+
+  const cursorShapes = useMemo(() => {
+    const shapes: Record<string, unknown>[] = [];
+    const metrics = probe?.metrics;
+    if (metrics && metrics.target_value !== null && metrics.target_value !== undefined) {
+      const target = metrics.target_value;
+      const start = probe.values[0] ?? 0;
+      const band = Math.abs(target - start) * 0.02;
+      if (band > 0) {
+        shapes.push({ type: "rect", xref: "paper", x0: 0, x1: 1, y0: target - band, y1: target + band, fillcolor: "rgba(255,255,255,0.05)", line: { width: 0 }, layer: "below" });
+      }
+      shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: target, y1: target, line: { color: "rgba(255,255,255,0.45)", width: 1, dash: "dot" } });
+      if (metrics.settling_time !== null && metrics.settling_time !== undefined) {
+        const settle = (metrics.step_time ?? 0) + metrics.settling_time;
+        shapes.push({ type: "line", yref: "paper", x0: settle, x1: settle, y0: 0, y1: 1, line: { color: "rgba(255,255,255,0.35)", width: 1, dash: "dot" } });
+      }
+    }
+    if (probe?.first) {
+      shapes.push({ type: "line", yref: "paper", x0: probe.first.t, x1: probe.first.t, y0: 0, y1: 1, line: { color: "rgba(255,255,255,0.6)", width: 1 } });
+    }
+    if (probe?.second) {
+      shapes.push({ type: "line", yref: "paper", x0: probe.second.t, x1: probe.second.t, y0: 0, y1: 1, line: { color: "rgba(255,255,255,0.6)", width: 1, dash: "dash" } });
+    }
+    return shapes;
+  }, [probe]);
+
+  const settleAnnotation = useMemo(() => {
+    const metrics = probe?.metrics;
+    if (!metrics || metrics.settling_time === null || metrics.settling_time === undefined) return [];
+    return [{
+      x: (metrics.step_time ?? 0) + metrics.settling_time, y: 1, xref: "x", yref: "paper", yanchor: "bottom",
+      text: "t_рег", showarrow: false, font: { size: 11, color: "#8a8a8a" },
+    }];
+  }, [probe]);
+
+  function placeCursor(event: PlotClick) {
+    const t = event.points?.[0]?.x;
+    if (typeof t !== "number") return;
+    setCursors((current) => (event.event?.shiftKey ? [current[0], t] : [t, current[1]]));
+  }
+  placeCursorRef.current = placeCursor;
+
   function selectTab(tab: ScopeTab) {
     setActiveTab(tab);
     onTabChange?.(tab);
@@ -134,6 +257,8 @@ export function SimulationChart({
       margin: { l: 56, r: 16, b: 44, t: traces.length > 1 ? 32 : 12 },
       xaxis: axis("t, с"),
       yaxis: axis("y(t)"),
+      shapes: cursorShapes,
+      annotations: settleAnnotation,
       ...extra,
     });
   }
@@ -144,9 +269,33 @@ export function SimulationChart({
     }
 
     return (
-      <div className="scope-plot scope-plot--full" data-testid="plot-ready">
+      <div
+        className="scope-plot scope-plot--full"
+        data-testid="plot-ready"
+        onPointerEnter={(event) => bindClicks(event.currentTarget.querySelector(".js-plotly-plot"))}
+      >
+        {probe && (
+          <div className="scope-readout" data-testid="cursor-readout">
+            {probe.first ? (
+              <>
+                <span><span className="hud-key">t₁</span> {formatCursor(probe.first.t)}</span>
+                <span><span className="hud-key">{probe.label}</span> {formatCursor(probe.first.y)}</span>
+                {probe.second && (
+                  <>
+                    <span><span className="hud-key">t₂</span> {formatCursor(probe.second.t)}</span>
+                    <span><span className="hud-key">Δt</span> {formatCursor(probe.second.t - probe.first.t)}</span>
+                    <span><span className="hud-key">Δy</span> {formatCursor(probe.second.y - probe.first.y)}</span>
+                  </>
+                )}
+                <button type="button" className="hud-link" onClick={() => setCursors([null, null])}>Сбросить курсоры</button>
+              </>
+            ) : (
+              <span className="scope-readout__hint">Клик по графику — курсор, Shift+клик — второй курсор</span>
+            )}
+          </div>
+        )}
         <Plot
-          data={traces}
+          data={[...traces, ...cursorTraces]}
           layout={timeLayout()}
           config={PLOT_CONFIG}
           style={{ width: "100%", height: "100%", minHeight: "180px" }}
@@ -220,6 +369,13 @@ export function SimulationChart({
           </div>
         ) : (
           <p>Общая модель системы пока недоступна.</p>
+        )}
+
+        {system && (
+          <>
+            <h3>Полюса и годограф</h3>
+            <PoleMap poles={system.poles} diagram={diagram} focusBlockId={focusBlockId} />
+          </>
         )}
 
         <h3>Показатели качества</h3>

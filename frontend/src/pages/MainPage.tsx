@@ -173,6 +173,13 @@ function ModelingWorkspace() {
   const [previousResult, setPreviousResult] = useState<SimulationResponse | null>(null);
   // Last successful run of the current diagram; survives edits that clear `result`.
   const lastRunRef = useRef<SimulationResponse | null>(null);
+  // Diagram of the shown result (root level), for the root-locus sweep.
+  const [resultDiagram, setResultDiagram] = useState<Diagram | null>(null);
+  // Live mode: once a run succeeded, parameter edits recompute in the background.
+  const [isLiveResult, setIsLiveResult] = useState(false);
+  const liveEditRef = useRef(false);
+  const liveTimerRef = useRef<number | null>(null);
+  const liveAbortRef = useRef<AbortController | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [solver, setSolver] = useState<"rk4" | "solve_ivp">("solve_ivp");
   const [tEnd, setTEnd] = useState<number>(6);
@@ -381,6 +388,11 @@ function ModelingWorkspace() {
     if (!previousRevision || previousRevision === modelRevisionKey) {
       return;
     }
+    if (liveEditRef.current) {
+      // A live edit keeps the result on screen until the recomputed one arrives.
+      liveEditRef.current = false;
+      return;
+    }
     if (
       diagnosticsState !== "idle" ||
       diagnosticsIssues.length > 0 ||
@@ -451,6 +463,13 @@ function ModelingWorkspace() {
     // Plotly resizes reliably on window resize events.
     window.dispatchEvent(new Event("resize"));
   }, [scopeHeightPx, isResizingScope]);
+
+  const sidePanelsKey = `${isLibraryCollapsed}-${Boolean(isInspectorOpen && selectedNode)}`;
+  useEffect(() => {
+    // Side panels animate their width; resize the plots once the grid has settled.
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 280);
+    return () => window.clearTimeout(timer);
+  }, [sidePanelsKey]);
 
   useEffect(() => {
     if (result?.success || errors.length > 0) {
@@ -1119,7 +1138,57 @@ function ModelingWorkspace() {
     }
   }
 
+  function cancelLiveRun() {
+    if (liveTimerRef.current !== null) window.clearTimeout(liveTimerRef.current);
+    liveTimerRef.current = null;
+    liveAbortRef.current?.abort();
+    liveAbortRef.current = null;
+  }
+
+  /** Recompute without the diagnostics ceremony; the last explicit run stays as the comparison baseline. */
+  async function runLive() {
+    liveEditRef.current = false;
+    liveAbortRef.current?.abort();
+    const controller = new AbortController();
+    liveAbortRef.current = controller;
+    const diagram = diagramWithCurrentHierarchy();
+    try {
+      const response = await simulateDiagram({ diagram, t_start: 0, t_end: tEnd, dt, solver }, controller.signal);
+      if (controller.signal.aborted) return;
+      setPreviousResult(lastRunRef.current);
+      setResult(response);
+      setResultDiagram(diagram);
+      setIsLiveResult(true);
+      setIsScopeOpen(true);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "aborted") return;
+      setNotice({ tone: "error", text: errorText(error, "Не удалось пересчитать модель.") });
+    }
+  }
+
+  // The debounce timer calls the handler of the latest render, which sees the edited nodes.
+  const runLiveRef = useRef(runLive);
+  runLiveRef.current = runLive;
+
+  function applyFromInspector(updates: Record<string, unknown>) {
+    if (!result?.success) {
+      applySelectedParameters(updates);
+      return;
+    }
+    liveEditRef.current = true;
+    applySelectedParameters(updates);
+    if (liveTimerRef.current !== null) window.clearTimeout(liveTimerRef.current);
+    liveTimerRef.current = window.setTimeout(() => {
+      liveTimerRef.current = null;
+      void runLiveRef.current();
+    }, 150);
+  }
+
+  useEffect(() => () => cancelLiveRun(), []);
+
   async function runSimulation() {
+    cancelLiveRun();
+    setIsLiveResult(false);
     const serverLabel = "Сборка модели и расчёт";
     setScopeTab("plot");
     setIsLibraryCollapsed(true);
@@ -1161,6 +1230,7 @@ function ModelingWorkspace() {
       setPreviousResult(lastRunRef.current);
       lastRunRef.current = response;
       setResult(response);
+      setResultDiagram(diagram);
       setDiagnosticsState("success");
       setDiagnosticsTab("progress");
       showRunProgress(["done"], ["done", `${response.time.length} точек`], serverLabel);
@@ -1344,7 +1414,7 @@ function ModelingWorkspace() {
 
         <section className="modeling-main" ref={modelingMainRef} style={modelingMainStyle}>
           <section className="canvas-pane">
-            <div id="diagram-workbench" className={`canvas-wrapper ${levelTransition ? `level-${levelTransition.direction}-${levelTransition.count % 2}` : ""}`} onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
+            <div id="diagram-workbench" className={`canvas-wrapper ${result?.success ? "has-flow" : ""} ${levelTransition ? `level-${levelTransition.direction}-${levelTransition.count % 2}` : ""}`} onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
               {nodes.length === 0 && (
                 <div className="canvas-starter">
                   <p className="canvas-starter__motto"><ScrambleText text="[ Схема → модель ẋ = Ax + Br → результат ]" delay={150} /></p>
@@ -1442,6 +1512,9 @@ function ModelingWorkspace() {
               <SimulationChart
                 result={result}
                 previousResult={previousResult}
+                live={isLiveResult}
+                diagram={resultDiagram}
+                focusBlockId={selectedNodeId}
                 onClose={() => {
                   setIsScopeOpen(false);
                   setScopeTab("plot");
@@ -1481,7 +1554,7 @@ function ModelingWorkspace() {
             node={inspectorNode}
             title={selectedNodeTitle}
             connectedInputPorts={selectedConnectedInputPorts}
-            onParametersApply={applySelectedParameters}
+            onParametersApply={applyFromInspector}
             onDelete={deleteSelectedNode}
             onEnterSubsystem={enterSubsystem}
             onClose={() => setIsInspectorOpen(false)}

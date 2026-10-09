@@ -64,6 +64,20 @@ function edgeData(data: EdgeProps["data"]): DiagramEdgeData {
   };
 }
 
+/**
+ * A point of light travelling along the signal after a successful run. It is
+ * always rendered and shown only while the canvas has the `has-flow` class.
+ */
+function SignalSpark({ path, duration }: { path: string; duration: number }) {
+  // A stable per-edge offset keeps the dots from moving in lockstep.
+  const offset = (path.length % 17) / 17;
+  return (
+    <circle className="signal-spark" r={1.8}>
+      <animateMotion dur={`${duration}s`} begin={`${(offset * duration).toFixed(2)}s`} repeatCount="indefinite" path={path} />
+    </circle>
+  );
+}
+
 function Junction({ x, y }: Point) {
   return <circle className="signal-junction" cx={x} cy={y} r={4.2} />;
 }
@@ -95,6 +109,7 @@ export function SignalEdge({
   return (
     <>
       <BaseEdge path={path} markerEnd={markerEnd} style={style} interactionWidth={interactionWidth} />
+      <SignalSpark path={path} duration={2.4} />
       {route.showJunction && <Junction x={sourceX + BRANCH_LEAD} y={sourceY} />}
     </>
   );
@@ -140,6 +155,7 @@ export function FeedbackEdge({
   return (
     <>
       <BaseEdge path={path} markerEnd={markerEnd} style={style} interactionWidth={interactionWidth} />
+      <SignalSpark path={path} duration={3.6} />
       {route.showJunction && <Junction x={branchX} y={sourceY} />}
     </>
   );

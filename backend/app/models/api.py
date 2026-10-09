@@ -74,3 +74,34 @@ class SimulationResponse(BaseModel):
     frequency_analysis: dict[str, Any] = Field(default_factory=dict)
     quality_metrics: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+
+
+MAX_SWEEP_VALUES = 200
+
+
+class SweepRequest(BaseModel):
+    """Poles of the assembled model while one numeric block parameter varies."""
+
+    diagram: Diagram
+    block_id: str
+    parameter: str
+    values: list[float] = Field(min_length=2, max_length=MAX_SWEEP_VALUES)
+
+    @model_validator(mode="after")
+    def validate_values(self) -> SweepRequest:
+        if any(not math.isfinite(value) for value in self.values):
+            raise ValueError("Все значения параметра должны быть конечными.")
+        return self
+
+
+class SweepPoint(BaseModel):
+    value: float
+    poles: list[dict[str, float]] | None = None
+    stability: str | None = None
+    error: str | None = None
+
+
+class SweepResponse(BaseModel):
+    block_id: str
+    parameter: str
+    points: list[SweepPoint]

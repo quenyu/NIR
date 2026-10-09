@@ -126,3 +126,47 @@ test("the command palette adds a block and runs commands from the keyboard", asy
   await page.getByTestId("load-example-secondOrder").click();
   await expect(page.locator('[data-block-type="SecondOrderOscillator"]')).toHaveCount(1);
 });
+
+test("live mode: dragging K recomputes without a run click, and the root locus follows the sweep", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("starter-example-unstablePlantFeedback").click();
+  await simulate(page);
+
+  await page.getByTestId("node-controller").click();
+  const recomputed = page.waitForResponse((r) => r.url().endsWith("/simulate"));
+  await page.getByTestId("slider-controller-k").fill("6");
+  const body = await (await recomputed).json();
+  expect(body.system_analysis.poles[0].real).toBeCloseTo(-5, 9);
+  await expect(page.getByTestId("plot-ready")).toBeVisible();
+
+  const swept = page.waitForResponse((r) => r.url().endsWith("/analyze/sweep"));
+  await page.getByTestId("scope-tab-analysis").click();
+  const sweep = await (await swept).json();
+  expect(sweep.parameter).toBe("k");
+  // Every point of the first-order locus sits on the real axis at 1 - K.
+  for (const point of sweep.points) {
+    expect(point.poles[0].real).toBeCloseTo(1 - point.value, 9);
+  }
+  await expect(page.getByTestId("pole-map")).toBeVisible();
+});
+
+test("oscilloscope cursors read the plotted signal", async ({ page }) => {
+  await page.goto("/?example=firstOrder");
+  await simulate(page);
+  const plot = page.locator(".scope-plot .nsewdrag").first();
+  const box = (await plot.boundingBox())!;
+  const x = box.x + box.width * 0.5;
+  const y = box.y + box.height * 0.5;
+  await page.mouse.move(x - 10, y, { steps: 4 });
+  await page.mouse.move(x, y, { steps: 4 });
+  await page.mouse.click(x, y);
+  const readout = page.getByTestId("cursor-readout");
+  await expect(readout).toContainText("t₁");
+  // The cursor sits mid-window on y = 2(1 - e^(-2t)) (K = 2, T = 0.5): the reading matches the curve.
+  const text = await readout.innerText();
+  const t = Number(/t₁\s+([\d.]+)/.exec(text)![1]);
+  const value = Number(/y\s+([\d.]+)/.exec(text)![1]);
+  expect(t).toBeGreaterThan(2.5);
+  expect(t).toBeLessThan(3.5);
+  expect(value).toBeCloseTo(2 * (1 - Math.exp(-2 * t)), 2);
+});

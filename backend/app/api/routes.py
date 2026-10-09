@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response, status
 
-from app.models.api import SimulationRequest, SimulationResponse, ValidateRequest, ValidateResponse
+from app.analysis.sweep import sweep_poles
+from app.models.api import (
+    SimulationRequest,
+    SimulationResponse,
+    SweepRequest,
+    SweepResponse,
+    ValidateRequest,
+    ValidateResponse,
+)
 from app.models.projects import (
     ProjectCreateRequest,
     ProjectListResponse,
@@ -65,3 +73,8 @@ def validate_endpoint(payload: ValidateRequest) -> ValidateResponse:
 @router.post("/simulate", response_model=SimulationResponse)
 def simulate_endpoint(payload: SimulationRequest) -> SimulationResponse:
     return simulate_request(payload)
+
+
+@router.post("/analyze/sweep", response_model=SweepResponse)
+def sweep_endpoint(payload: SweepRequest) -> SweepResponse:
+    return sweep_poles(payload)

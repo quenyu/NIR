@@ -797,7 +797,100 @@
   height: 100%;
   min-height: 200px;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.scope-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 22px;
+  min-height: 30px;
+  font-size: var(--type-small);
+}
+
+.scope-readout .hud-key {
+  margin-right: 6px;
+  text-transform: none;
+}
+
+.scope-readout__hint {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.scope-plot .js-plotly-plot .plotly .cursor-crosshair,
+.scope-plot .js-plotly-plot .plotly .nsewdrag {
+  cursor: crosshair !important;
+}
+
+.pole-map {
+  display: grid;
+  gap: 8px;
+}
+
+.pole-map__picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pole-map__picker select {
+  width: auto;
+}
+
+/* Signal flow after a run: a small white point travels each link. */
+.signal-spark {
+  display: none;
+  fill: var(--text);
+}
+
+.has-flow .signal-spark {
+  display: inline;
+}
+
+/* Live parameter slider: a hairline track and a square thumb. */
+.hud-range {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.hud-range::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
+.hud-range::-moz-range-track {
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
+.hud-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 9px;
+  height: 9px;
+  margin-top: -4px;
+  border: 1px solid var(--text);
+  background: #000;
+}
+
+.hud-range::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--text);
+  border-radius: 0;
+  background: #000;
+}
+
+.hud-range:hover::-webkit-slider-thumb,
+.hud-range:focus-visible::-webkit-slider-thumb {
+  background: var(--text);
 }
 
 .scope-plot__footer {

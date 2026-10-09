@@ -1,6 +1,7 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { blockTypeLabel, normalizedSigns, type BlockNodeData } from "../../types/diagram";
 import { UiIcon } from "../UiIcon";
+import { sliderRange, UNSLIDABLE_PARAMETERS, type SliderRange } from "../../features/parameterRange";
 import { ScrambleText } from "../../features/motion/ScrambleText";
 
 interface WorkspaceInspectorProps {
@@ -37,6 +38,10 @@ const PARAMETER_LABELS: Record<string, string> = {
 };
 
 const HIDDEN_PARAMETERS = new Set(["diagram", "layout", "signs"]);
+function roundToStep(value: number, step: number): number {
+  const digits = Math.max(0, -Math.floor(Math.log10(step)));
+  return Number(value.toFixed(Math.min(digits, 10)));
+}
 
 function formatParameterValue(value: unknown): string {
   if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
@@ -84,6 +89,17 @@ export function WorkspaceInspector({
   }, [node.blockId]);
 
   const fields = Object.entries(node.parameters).filter(([key]) => !HIDDEN_PARAMETERS.has(key));
+  // Ranges are fixed when a block is selected; parameters change while dragging.
+  const ranges = useMemo(() => {
+    const result: Record<string, SliderRange> = {};
+    for (const [key, value] of Object.entries(node.parameters)) {
+      if (typeof value === "number" && Number.isFinite(value) && !UNSLIDABLE_PARAMETERS.has(key) && !HIDDEN_PARAMETERS.has(key)) {
+        result[key] = sliderRange(key, value);
+      }
+    }
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.blockId]);
 
   function commit(key: string) {
     const raw = drafts[key];
@@ -152,7 +168,7 @@ export function WorkspaceInspector({
         )}
         {fields.map(([key, value]) => (
           <label key={`${node.blockId}-${key}`} className="hud-field">
-            <span className="hud-key">{PARAMETER_LABELS[key] ?? key}</span>
+            <span className="hud-field__label">{PARAMETER_LABELS[key] ?? key}</span>
             <input
               value={drafts[key] ?? formatParameterValue(value)}
               onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
@@ -161,6 +177,19 @@ export function WorkspaceInspector({
               data-testid={`param-${node.blockId}-${key}`}
               spellCheck={false}
             />
+            {ranges[key] && typeof value === "number" && (
+              <input
+                type="range"
+                className="hud-range"
+                min={ranges[key].min}
+                max={ranges[key].max}
+                step={ranges[key].step}
+                value={value}
+                onChange={(event) => onParametersApply({ [key]: roundToStep(Number(event.target.value), ranges[key].step) })}
+                aria-label={`${PARAMETER_LABELS[key] ?? key}: ползунок`}
+                data-testid={`slider-${node.blockId}-${key}`}
+              />
+            )}
           </label>
         ))}
 

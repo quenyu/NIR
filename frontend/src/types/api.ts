@@ -128,6 +128,7 @@ export interface SimulationResponse {
   quality_metrics: Record<
     string,
     {
+      step_time?: number;
       final_value: number | null;
       target_value: number | null;
       target_source: string | null;

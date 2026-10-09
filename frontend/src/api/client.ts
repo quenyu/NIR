@@ -67,7 +67,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init,
       headers: init.body ? { "Content-Type": "application/json", ...init.headers } : init.headers,
     });
-  } catch {
+  } catch (error) {
+    if (init.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      throw new ApiError("Запрос отменён.", 0, "aborted");
+    }
     throw new ApiError(
       `Сервер моделирования недоступен (${API_BASE_URL}). Запустите backend и повторите.`,
       0,
@@ -93,8 +96,32 @@ export function validateDiagram(diagram: Diagram): Promise<ValidateResponse> {
   return request("/validate", post({ diagram }));
 }
 
-export function simulateDiagram(payload: SimulationRequestPayload): Promise<SimulationResponse> {
-  return request("/simulate", post(payload));
+export function simulateDiagram(payload: SimulationRequestPayload, signal?: AbortSignal): Promise<SimulationResponse> {
+  return request("/simulate", { ...post(payload), signal });
+}
+
+export interface SweepPoint {
+  value: number;
+  poles: Array<{ real: number; imag: number }> | null;
+  stability: string | null;
+  error: string | null;
+}
+
+export interface SweepResponse {
+  block_id: string;
+  parameter: string;
+  points: SweepPoint[];
+}
+
+/** Poles of the assembled model for each value of one numeric block parameter. */
+export function sweepParameter(
+  diagram: Diagram,
+  blockId: string,
+  parameter: string,
+  values: number[],
+  signal?: AbortSignal,
+): Promise<SweepResponse> {
+  return request("/analyze/sweep", { ...post({ diagram, block_id: blockId, parameter, values }), signal });
 }
 
 export interface ServerProjectPayload {
