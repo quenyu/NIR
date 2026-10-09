@@ -41,7 +41,7 @@
     "solver": "rk4",
     "dt": 0.005,
     "max_abs_error": 1.1651470899209926e-09,
-    "rmse": 5.942405895288104e-10,
+    "rmse": 5.942405924626344e-10,
     "final_value_error": 1.298623431011947e-10
   },
   {
@@ -49,26 +49,26 @@
     "scenario_title": "Колебательное звено 2-го порядка",
     "solver": "solve_ivp",
     "dt": 0.005,
-    "max_abs_error": 7.679903157864487e-09,
-    "rmse": 3.871565332187391e-09,
-    "final_value_error": 2.8351199166110064e-09
+    "max_abs_error": 7.679902935819882e-09,
+    "rmse": 3.871565281702854e-09,
+    "final_value_error": 2.8351194725217965e-09
   },
   {
     "scenario_slug": "butterworth_lpf",
     "scenario_title": "ФНЧ Баттерворта 2-го порядка",
     "solver": "rk4",
     "dt": 0.001,
-    "max_abs_error": 5.7188032087651663e-11,
-    "rmse": 1.7596926793926225e-11,
-    "final_value_error": -2.3314683517128287e-14
+    "max_abs_error": 5.718781004304674e-11,
+    "rmse": 1.7596845484622497e-11,
+    "final_value_error": -2.2870594307278225e-14
   },
   {
     "scenario_slug": "butterworth_lpf",
     "scenario_title": "ФНЧ Баттерворта 2-го порядка",
     "solver": "solve_ivp",
     "dt": 0.001,
-    "max_abs_error": 4.528969810291272e-09,
-    "rmse": 1.0302526894750447e-09,
-    "final_value_error": 2.6780244688495713e-11
+    "max_abs_error": 4.528969976824726e-09,
+    "rmse": 1.0302526294661492e-09,
+    "final_value_error": 2.6780688777705564e-11
   }
 ]
