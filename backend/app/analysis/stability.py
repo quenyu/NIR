@@ -20,15 +20,18 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from scipy.linalg import matrix_balance
+from scipy.linalg import matrix_balance, schur
 
 EPS = float(np.finfo(float).eps)
 # Real parts below this (relative to ||A||) count as "on the imaginary axis".
 # sqrt(eps) covers the eps^(1/2) spread of a double eigenvalue.
 AXIS_RTOL = float(np.sqrt(EPS))
 # Eigenvalues closer than this (relative) are treated as one multiple
-# eigenvalue; eps^(1/4) covers multiplicities up to four.
-CLUSTER_RTOL = EPS**0.25
+# eigenvalue: a k-fold eigenvalue is computed with a spread of about
+# eps^(1/k), so eps^(1/3) covers multiplicities up to three while still
+# separating distinct poles 1e-5 apart. A missed higher-order Jordan block
+# shows up as real parts beyond AXIS_RTOL and is still reported unstable.
+CLUSTER_RTOL = EPS ** (1.0 / 3.0)
 
 
 def _scale(a: np.ndarray) -> float:
@@ -68,24 +71,45 @@ def geometric_multiplicity(a: np.ndarray, value: complex) -> int:
     return int(np.sum(singular_values <= CLUSTER_RTOL * _scale(a)))
 
 
+def _axis_subspace(a_bal: np.ndarray) -> np.ndarray:
+    """Restriction of A to the invariant subspace of its near-axis eigenvalues.
+
+    Candidates are selected with a loose tolerance relative to ||A||; the
+    ordered complex Schur form then isolates them, so that the final
+    decisions below use the scale of these modes and not of fast ones
+    elsewhere in the model (a stiff block must not blur slow poles).
+    """
+
+    loose = CLUSTER_RTOL * _scale(a_bal)
+    t, _, count = schur(a_bal.astype(complex), output="complex", sort=lambda value: abs(value.real) <= loose)
+    return t[:count, :count]
+
+
 def classify_stability(a: np.ndarray) -> dict[str, Any]:
     n = a.shape[0]
     if n == 0:
         return {"status": "not_applicable", "reason": "Модель не содержит состояний."}
 
     a_bal, _ = balanced(a)
-    axis_tolerance = AXIS_RTOL * _scale(a_bal)
-    clusters = eigenvalue_clusters(a_bal)
+    unstable = {"status": "unstable", "reason": "Есть полюса в правой полуплоскости."}
+    loose = CLUSTER_RTOL * _scale(a_bal)
+    if any(value.real > loose for value in np.linalg.eigvals(a_bal)):
+        return unstable
 
-    if any(value.real > axis_tolerance for value, _ in clusters):
-        return {"status": "unstable", "reason": "Есть полюса в правой полуплоскости."}
+    local = _axis_subspace(a_bal)
+    if local.size == 0:
+        return {"status": "stable", "reason": "Все полюса в левой полуплоскости."}
 
-    on_axis = [(value, k) for value, k in clusters if abs(value.real) <= axis_tolerance]
+    axis_tolerance = AXIS_RTOL * _scale(local)
+    values = np.diag(local)
+    if any(value.real > axis_tolerance for value in values):
+        return unstable
+    on_axis = [(value, k) for value, k in eigenvalue_clusters(local) if abs(value.real) <= axis_tolerance]
     if not on_axis:
         return {"status": "stable", "reason": "Все полюса в левой полуплоскости."}
 
     for value, multiplicity in on_axis:
-        if multiplicity > 1 and geometric_multiplicity(a_bal, value) < multiplicity:
+        if multiplicity > 1 and geometric_multiplicity(local, value) < multiplicity:
             return {
                 "status": "unstable",
                 "reason": (
@@ -129,14 +153,15 @@ def rk4_step_check(a: np.ndarray, step: float) -> dict[str, Any]:
         return {"stable": True, "unstable_modes": [], "max_step": None, "inaccurate_growing_modes": []}
 
     poles = np.linalg.eigvals(a)
-    axis_tolerance = AXIS_RTOL * _scale(a)
     unstable: list[complex] = []
     limits: list[float] = []
     inaccurate: list[complex] = []
     for pole in poles:
         z = step * pole
         amplification = abs(rk4_amplification(z))
-        if pole.real <= axis_tolerance:
+        # Relative to |lambda|: a fast block elsewhere must not turn a slowly
+        # growing mode into an "axis" mode.
+        if pole.real <= AXIS_RTOL * abs(pole):
             if amplification > 1.0 + 1e-12:
                 unstable.append(complex(pole))
                 limits.append(_rk4_step_limit(complex(pole), step))

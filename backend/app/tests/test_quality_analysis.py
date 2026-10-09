@@ -110,3 +110,20 @@ def test_diverging_signal_has_no_settling_time_end_to_end() -> None:
     assert row["settling_time"] is None
     assert row["rise_time"] is None
     assert "неустойчива" in row["reason"]
+
+
+def test_step_after_the_window_leaves_indices_undefined() -> None:
+    """y_inf assumes the step is on; a step at t0 >= t_end never reaches the trajectory."""
+
+    b = DiagramBuilder()
+    b.add("u", "StepInput", amplitude=1.0, t0=10.0)
+    b.add("g", "TransferFunction", numerator=[1.0], denominator=[1.0, 1.0])
+    b.add("y", "Scope", label="y")
+    b.link("u", "g")
+    b.link("g", "y")
+    result = simulate_request(SimulationRequest(diagram=Diagram.model_validate(b.build()), t_end=5.0, dt=0.01))
+
+    row = result.quality_metrics["y"]
+    assert row["target_value"] is None
+    assert row["settling_time"] is None
+    assert "после окончания" in row["reason"]

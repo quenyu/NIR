@@ -14,13 +14,19 @@ from app.models.diagram import Block, Diagram
 from app.simulation.hierarchy import flatten_diagram
 
 
-def _block_lookup(blocks: list[Block]) -> tuple[dict[str, Block], list[str]]:
+def _block_lookup(blocks: list[Block], *, flattened: bool) -> tuple[dict[str, Block], list[str]]:
     errors: list[str] = []
     by_id: dict[str, Block] = {}
 
     for block in blocks:
         if not block.id.strip():
             errors.append("Идентификатор блока не может быть пустым.")
+            continue
+        if not flattened and ("::" in block.id or block.id.startswith("@")):
+            errors.append(
+                f"Идентификатор блока '{block.id}' не может содержать '::' или начинаться с '@' "
+                "(эти обозначения зарезервированы для путей подсистем)."
+            )
             continue
         if block.id in by_id:
             errors.append(f"Дублирующийся идентификатор блока '{block.id}'.")
@@ -30,9 +36,9 @@ def _block_lookup(blocks: list[Block]) -> tuple[dict[str, Block], list[str]]:
     return by_id, errors
 
 
-def _validate_level(diagram: Diagram, *, allow_interface_blocks: bool) -> list[str]:
+def _validate_level(diagram: Diagram, *, allow_interface_blocks: bool, flattened: bool = False) -> list[str]:
     errors: list[str] = []
-    blocks_by_id, id_errors = _block_lookup(diagram.blocks)
+    blocks_by_id, id_errors = _block_lookup(diagram.blocks, flattened=flattened)
     errors.extend(id_errors)
 
     expected_ports: dict[str, tuple[list[str], list[str]]] = {}
@@ -153,5 +159,5 @@ def validate_structure(diagram: Diagram) -> tuple[Diagram | None, list[str]]:
     except (ValueError, ValidationError) as exc:
         return None, [f"Ошибка иерархии подсистем: {exc}"]
 
-    flat_errors = _validate_level(flattened, allow_interface_blocks=False)
+    flat_errors = _validate_level(flattened, allow_interface_blocks=False, flattened=True)
     return (None, flat_errors) if flat_errors else (flattened, [])

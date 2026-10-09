@@ -94,6 +94,10 @@ def simulate_request(request: SimulationRequest) -> SimulationResponse:
             if stability == "unstable"
             else "Установившееся значение не определено: система на границе устойчивости."
         )
+    elif any(s.amplitude != 0.0 and s.t0 >= float(t_eval[-1]) for s in model.sources):
+        # y_inf assumes every step is on; a step after the window is not in the trajectory.
+        steady_values = dict.fromkeys(steady_values)
+        unavailable_reason = "Ступенчатый вход включается после окончания интервала моделирования."
     if len({s.t0 for s in model.sources if s.amplitude != 0.0}) > 1:
         warnings.append(
             "Ступенчатые входы включаются в разные моменты: показатели качества "

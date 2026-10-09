@@ -44,6 +44,12 @@ def _pbh(a: np.ndarray, b: np.ndarray, *, observability: bool) -> dict[str, Any]
     else:
         other = np.linalg.solve(t, b)
 
+    # The rank of [lambda I - A, B] does not depend on the scale of B, but the
+    # relative threshold does: bring B (or C^T) to the scale of A first.
+    other_norm = float(np.linalg.norm(other, 2))
+    if other_norm > 0.0:
+        other = other * (max(1.0, float(np.linalg.norm(a_bal, 2))) / other_norm)
+
     deficit = 0
     margins: list[float] = []
     deficient: list[dict[str, float]] = []

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from app.analysis.system import analyze_model
 from app.examples.hierarchical_scenarios import SCENARIOS, hierarchical_closed_loop
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
+from app.simulation.assembly import assemble_linear_model
 from app.simulation.hierarchy import flatten_diagram
 from app.simulation.model import diagram_errors as validate_diagram
 from app.simulation.service import simulate_request
@@ -25,7 +27,9 @@ def test_hierarchical_scenarios_compile_to_equivalent_flat_models() -> None:
 
         flattened = flatten_diagram(hierarchical)
         hierarchical_analysis = analyze(hierarchical)
-        flat_analysis = analyze(flattened)
+        # A flattened diagram carries reserved "::" ids, so it is assembled
+        # directly rather than resubmitted as user input.
+        flat_analysis = analyze_model(assemble_linear_model(flattened))
 
         assert hierarchical_analysis["state_dimension"] == EXPECTED_STATE_DIMENSIONS[name]
         for matrix_name in ("A", "B", "C", "D"):

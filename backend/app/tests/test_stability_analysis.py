@@ -102,3 +102,48 @@ def test_rk4_check_does_not_block_physically_unstable_modes() -> None:
     assert check["stable"] is True
     assert check["inaccurate_growing_modes"]  # e^2 vs R(2) = 7: reported, not blocked
     assert rk4_step_check(a, 0.01)["inaccurate_growing_modes"] == []
+
+
+def _with_fast_lag(slow: np.ndarray, time_constant: float) -> np.ndarray:
+    """Slow block driving a fast lag: a stiff model with ||A|| ~ 1/T."""
+
+    n = slow.shape[0]
+    a = np.zeros((n + 1, n + 1))
+    a[:n, :n] = slow
+    a[n, n] = -1.0 / time_constant
+    a[n, 0] = 1.0 / time_constant
+    return a
+
+
+@pytest.mark.parametrize(
+    ("slow_denominator", "time_constant", "status"),
+    [
+        ([1.0, -1.0], 1e-9, "unstable"),          # growing pole next to a very fast one
+        ([1.0, 0.0, -0.0025], 1e-3, "unstable"),  # poles +-0.05 must not merge into 0
+        ([1.0, 0.0], 1e-6, "marginal"),
+    ],
+)
+def test_fast_modes_do_not_blur_slow_poles(slow_denominator, time_constant, status) -> None:
+    assert classify_stability(_with_fast_lag(companion(slow_denominator), time_constant))["status"] == status
+
+
+def test_close_distinct_axis_poles_are_not_a_jordan_block() -> None:
+    close_pairs = list(np.polymul([1.0, 0.0, 1.0], [1.0, 0.0, 1.0002**2]))
+    assert classify_stability(companion(close_pairs))["status"] == "marginal"
+    stiff = list(np.polymul(np.polymul([1.0, 0.0, 1.0], [1.0, 0.0, 1.21]), [1.0, 1000.0]))
+    assert classify_stability(companion(stiff))["status"] == "marginal"
+
+
+def test_rk4_check_lets_a_growing_mode_run_next_to_a_fast_mode() -> None:
+    a = _with_fast_lag(companion([1.0, -1.0]), 1e-8)
+    assert rk4_step_check(a, 1e-9)["stable"] is True
+
+
+@pytest.mark.parametrize(("order", "cutoff"), [(4, 1000.0), (6, 100.0), (8, 1000.0)])
+def test_pbh_does_not_depend_on_the_scale_of_b_and_c(order: int, cutoff: float) -> None:
+    numerator, denominator = butterworth_coefficients(order, cutoff)
+    a, b, c, _ = (np.asarray(m, dtype=float) for m in tf2ss(numerator, denominator))
+
+    assert controllability(a, b)["full_rank"] is True
+    assert observability(a, c)["full_rank"] is True
+    assert controllability(np.diag([-1.0, -2.0]), np.array([[1e9], [1e9]]))["full_rank"] is True

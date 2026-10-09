@@ -129,3 +129,15 @@ def test_duplicate_scope_labels_are_rejected() -> None:
     errors = validate_diagram(Diagram.model_validate(raw))
 
     assert any("одинаковое имя сигнала 'y'" in error for error in errors)
+
+
+def test_reserved_characters_in_block_ids_are_rejected() -> None:
+    for reserved in ("@input", "S::g"):
+        diagram_dict = deep_copy_diagram(integrator_step_diagram())
+        old = diagram_dict["blocks"][0]["id"]
+        diagram_dict["blocks"][0]["id"] = reserved
+        for conn in diagram_dict["connections"]:
+            if conn["from_block"] == old:
+                conn["from_block"] = reserved
+        errors = validate_diagram(Diagram.model_validate(diagram_dict))
+        assert any("зарезервированы" in message for message in errors)
