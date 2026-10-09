@@ -54,6 +54,9 @@ export function WorkspaceChrome({
 }: WorkspaceChromeProps) {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const commandMenuRef = useRef<HTMLDetailsElement | null>(null);
+  // The shortcut listener is registered once; it always calls the latest handler.
+  const saveRef = useRef(onSaveServerProject);
+  saveRef.current = onSaveServerProject;
 
   useEffect(() => {
     function closeCommandMenu() {
@@ -72,11 +75,20 @@ export function WorkspaceChrome({
       if (event.key === "Escape") closeCommandMenu();
     }
 
+    function onSaveShortcut(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveRef.current();
+      }
+    }
+
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onEscape);
+    window.addEventListener("keydown", onSaveShortcut);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onEscape);
+      window.removeEventListener("keydown", onSaveShortcut);
     };
   }, []);
 
@@ -105,7 +117,14 @@ export function WorkspaceChrome({
           <span>{statusLabel(diagnosticsState, simulationSucceeded)}</span>
         </div>
 
-        <button type="button" className="header-save-button" onClick={onSaveProject} data-testid="save-project-button" title="Сохранить проект в JSON" aria-label="Сохранить проект">
+        <button
+          type="button"
+          className="header-save-button"
+          onClick={onSaveServerProject}
+          data-testid="save-server-project-button"
+          title={serverProjectId ? `Сохранить на сервере (Ctrl+S) · версия ${serverProjectVersion}` : "Сохранить на сервере (Ctrl+S)"}
+          aria-label="Сохранить на сервере"
+        >
           <UiIcon name="save" />
         </button>
 
@@ -118,17 +137,16 @@ export function WorkspaceChrome({
           <div className="command-menu__popover">
             <span className="command-menu__label">Файл и схема</span>
             <button type="button" onClick={() => closeMenuAnd(() => importFileInputRef.current?.click())} data-testid="load-project-button">
-              <UiIcon name="folder" /><span><strong>Открыть JSON</strong><small>Загрузить локальный проект</small></span>
+              <UiIcon name="folder" /><span><strong>Импорт JSON</strong><small>Открыть файл проекта</small></span>
+            </button>
+            <button type="button" onClick={() => closeMenuAnd(onSaveProject)} data-testid="save-project-button">
+              <UiIcon name="save" /><span><strong>Экспорт JSON</strong><small>Скачать файл проекта</small></span>
             </button>
             <button type="button" onClick={() => closeMenuAnd(onArrange)} disabled={isArranging || !canArrange} data-testid="arrange-diagram-button">
               <UiIcon name="arrange" /><span><strong>{isArranging ? "Раскладка…" : "Разложить схему"}</strong><small>Автоматическое размещение блоков</small></span>
             </button>
             <span className="command-menu__separator" />
             <span className="command-menu__label">Серверные проекты</span>
-            <button type="button" onClick={() => closeMenuAnd(onSaveServerProject)} data-testid="save-server-project-button">
-              <UiIcon name="save" />
-              <span><strong>{serverProjectId ? "Обновить на сервере" : "Сохранить на сервере"}</strong><small>{serverProjectId ? `Текущая версия: ${serverProjectVersion}` : "Создать серверную копию"}</small></span>
-            </button>
             <button type="button" onClick={() => closeMenuAnd(onOpenServerProjects)} data-testid="open-server-projects-button">
               <UiIcon name="archive" /><span><strong>Открыть проекты</strong><small>Список серверных версий</small></span>
             </button>

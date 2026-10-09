@@ -71,6 +71,7 @@ test("exports a versioned project JSON", async ({ page }) => {
   await page.getByTestId("starter-example-firstOrder").click();
 
   const downloadPromise = page.waitForEvent("download");
+  await page.locator("summary[aria-label=\"Дополнительные команды\"]").click();
   await page.getByTestId("save-project-button").click();
   const download = await downloadPromise;
 

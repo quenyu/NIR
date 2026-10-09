@@ -28,6 +28,7 @@ import ReactFlow, {
 import {
   ApiError,
   createServerProject,
+  errorText,
   getServerProject,
   simulateDiagram,
   updateServerProject,
@@ -171,6 +172,8 @@ function ModelingWorkspace() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [result, setResult] = useState<SimulationResponse | null>(null);
+  // Outcome of project operations (save, open, export), shown above the canvas.
+  const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [previousResult, setPreviousResult] = useState<SimulationResponse | null>(null);
   // Last successful run of the current diagram; survives edits that clear `result`.
   const lastRunRef = useRef<SimulationResponse | null>(null);
@@ -523,6 +526,12 @@ function ModelingWorkspace() {
     }
   }, [errors.length, result?.success]);
 
+  useEffect(() => {
+    if (notice?.tone !== "info") return;
+    const timer = window.setTimeout(() => setNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   function startScopeResize(event: ReactMouseEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsResizingScope(true);
@@ -868,8 +877,7 @@ function ModelingWorkspace() {
 
   function saveProjectToJson() {
     if (nodes.length === 0) {
-      setInfo("");
-      setErrors(["Добавьте хотя бы один блок перед сохранением проекта."]);
+      setNotice({ tone: "error", text: "Добавьте хотя бы один блок перед сохранением проекта." });
       return;
     }
 
@@ -886,8 +894,7 @@ function ModelingWorkspace() {
       },
     });
     downloadDiagramProject(project);
-    setErrors([]);
-    setInfo("Проект сохранён в JSON-файл.");
+    setNotice({ tone: "info", text: "Проект сохранён в JSON-файл." });
   }
 
   function currentServerPayload(): ServerProjectPayload {
@@ -909,13 +916,12 @@ function ModelingWorkspace() {
 
   async function createProjectOnServer(title: string) {
     setIsBusy(true);
-    setErrors([]);
     try {
       const record = await createServerProject(title, currentServerPayload());
       setServerProjectId(record.id);
       setServerProjectVersion(record.version);
       setServerProjectTitle(record.title);
-      setInfo(`Проект «${record.title}» сохранён на сервере, версия ${record.version}.`);
+      setNotice({ tone: "info", text: `Проект «${record.title}» сохранён на сервере, версия ${record.version}.` });
     } finally {
       setIsBusy(false);
     }
@@ -927,7 +933,6 @@ function ModelingWorkspace() {
       return;
     }
     setIsBusy(true);
-    setErrors([]);
     try {
       const record = await updateServerProject(
         serverProjectId,
@@ -936,17 +941,17 @@ function ModelingWorkspace() {
         serverProjectVersion,
       );
       setServerProjectVersion(record.version);
-      setInfo(`Серверный проект обновлён до версии ${record.version}.`);
+      setNotice({ tone: "info", text: `Серверный проект обновлён до версии ${record.version}.` });
     } catch (saveError) {
       if (saveError instanceof ApiError && saveError.status === 409) {
         const serverVersion = saveError.payload.current_version;
-        setErrors([
-          `Проект изменён в другой сессии (на сервере версия ${String(serverVersion)}). `
-          + "Откройте актуальную версию или сохраните текущую схему как новый проект.",
-        ]);
-        setIsServerProjectsOpen(true);
+        setNotice({
+          tone: "error",
+          text: `Проект изменён в другой сессии (на сервере версия ${String(serverVersion)}). `
+            + "Откройте актуальную версию или сохраните текущую схему как новый проект.",
+        });
       } else {
-        setErrors(saveError instanceof ApiError ? saveError.messages : ["Не удалось сохранить проект на сервере."]);
+        setNotice({ tone: "error", text: errorText(saveError, "Не удалось сохранить проект на сервере.") });
       }
     } finally {
       setIsBusy(false);
@@ -955,7 +960,6 @@ function ModelingWorkspace() {
 
   async function openProjectFromServer(projectId: string) {
     setIsBusy(true);
-    setErrors([]);
     try {
       const record = await getServerProject(projectId);
       const { diagram, layout, simulation } = record.payload;
@@ -985,13 +989,13 @@ function ModelingWorkspace() {
       setServerProjectVersion(record.version);
       setServerProjectTitle(record.title);
       setIsServerProjectsOpen(false);
-      setInfo(`Открыт серверный проект «${record.title}», версия ${record.version}.`);
+      setNotice({ tone: "info", text: `Открыт серверный проект «${record.title}», версия ${record.version}.` });
       window.setTimeout(() => {
         if (layout.viewport) void setViewport(layout.viewport, { duration: 200 });
         else void fitView({ padding: 0.1, duration: 250, maxZoom: 1 });
       }, 0);
     } catch (openError) {
-      setErrors(openError instanceof ApiError ? openError.messages : ["Не удалось открыть серверный проект."]);
+      setNotice({ tone: "error", text: errorText(openError, "Не удалось открыть серверный проект.") });
     } finally {
       setIsBusy(false);
     }
@@ -1458,6 +1462,15 @@ function ModelingWorkspace() {
                 )}
                 <span className="canvas-caption__hint">Двойной клик — параметры · Delete — удалить</span>
               </div>
+              {notice && (
+                <p className={`canvas-notice is-${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} data-testid="canvas-notice">
+                  <UiIcon name={notice.tone === "error" ? "info" : "check"} />
+                  <span>{notice.text}</span>
+                  <button type="button" onClick={() => setNotice(null)} aria-label="Скрыть сообщение" title="Скрыть">
+                    <UiIcon name="close" />
+                  </button>
+                </p>
+              )}
             </header>
             <div id="diagram-workbench" className="canvas-wrapper" onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
               {nodes.length === 0 && (

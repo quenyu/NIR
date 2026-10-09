@@ -3546,3 +3546,29 @@ textarea:focus {
 .scope-analysis th {
   font-variant-numeric: tabular-nums;
 }
+
+.canvas-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 560px;
+  margin: 0 0 0 auto;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-left-width: 2px;
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  background: var(--surface-soft);
+}
+
+.canvas-notice.is-info { border-left-color: var(--success); }
+.canvas-notice.is-error { border-left-color: var(--danger); color: var(--text); }
+
+.canvas-notice button {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
