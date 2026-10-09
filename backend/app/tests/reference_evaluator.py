@@ -1,4 +1,14 @@
+"""Block-by-block evaluator of a flattened diagram (the original compiler).
+
+It computes the right-hand side by evaluating blocks in topological order and
+never forms the global matrices. Kept only as an independent reference for
+differential tests of simulation/assembly.py; it cannot evaluate algebraic
+loops, which the assembly solves.
+"""
+
 from __future__ import annotations
+
+from collections import deque
 
 from dataclasses import dataclass
 
@@ -28,14 +38,34 @@ from app.simulation.blocks import (
     step_input,
     sum_output,
 )
-from app.simulation.hierarchy import flatten_diagram
-from app.validation.validator import static_topological_sort, validate_diagram
+from app.validation.validator import validate_structure
 
 
 class DiagramCompilationError(ValueError):
     def __init__(self, errors: list[str]):
         super().__init__("Не удалось скомпилировать схему.")
         self.errors = errors
+
+
+def static_topological_sort(block_ids: list[str], edges: list[tuple[str, str]]) -> list[str]:
+    adjacency: dict[str, set[str]] = {block_id: set() for block_id in block_ids}
+    indegree: dict[str, int] = {block_id: 0 for block_id in block_ids}
+    for source, target in edges:
+        if source in adjacency and target in adjacency and target not in adjacency[source]:
+            adjacency[source].add(target)
+            indegree[target] += 1
+    queue = deque(sorted(node for node, degree in indegree.items() if degree == 0))
+    ordered: list[str] = []
+    while queue:
+        node = queue.popleft()
+        ordered.append(node)
+        for neighbor in sorted(adjacency[node]):
+            indegree[neighbor] -= 1
+            if indegree[neighbor] == 0:
+                queue.append(neighbor)
+    if len(ordered) != len(block_ids):
+        raise DiagramCompilationError(["Статический граф блоков содержит алгебраическую петлю."])
+    return ordered
 
 
 @dataclass(frozen=True)
@@ -499,14 +529,10 @@ def _build_scopes(
 
 
 def compile_diagram(diagram: Diagram) -> CompiledDiagram:
-    errors = validate_diagram(diagram)
-    if errors:
+    flat, errors = validate_structure(diagram)
+    if flat is None:
         raise DiagramCompilationError(errors)
-
-    try:
-        diagram = flatten_diagram(diagram)
-    except ValueError as exc:
-        raise DiagramCompilationError([f"Ошибка иерархии подсистем: {exc}"]) from exc
+    diagram = flat
 
     blocks_by_id = {block.id: block for block in diagram.blocks}
     incoming = _build_incoming_map(diagram)
@@ -528,3 +554,35 @@ def compile_diagram(diagram: Diagram) -> CompiledDiagram:
         initial_state=initial_state,
         scopes=scopes,
     )
+
+
+def probe_state_space(compiled: CompiledDiagram) -> dict[str, np.ndarray | list[str]]:
+    """Extract A, B, C, D by evaluating the graph on unit state/input vectors."""
+
+    input_ids = [block.id for block in compiled.diagram.blocks if block.type == "StepInput"]
+    n, m, p = compiled.initial_state.size, len(input_ids), len(compiled.scopes)
+    zero_state = np.zeros(n)
+    zero_sources = {block_id: 0.0 for block_id in input_ids}
+
+    def outputs(state: np.ndarray, sources: dict[str, float]) -> np.ndarray:
+        values = compiled.evaluate_outputs(0.0, state, sources)
+        return np.array([values[(s.source_block, s.source_port)] for s in compiled.scopes], dtype=float)
+
+    a, b = np.zeros((n, n)), np.zeros((n, m))
+    c, d = np.zeros((p, n)), np.zeros((p, m))
+    for column in range(n):
+        state = zero_state.copy()
+        state[column] = 1.0
+        a[:, column] = compiled.rhs(0.0, state, zero_sources)
+        c[:, column] = outputs(state, zero_sources)
+    for column, input_id in enumerate(input_ids):
+        sources = {**zero_sources, input_id: 1.0}
+        b[:, column] = compiled.rhs(0.0, zero_state, sources)
+        d[:, column] = outputs(zero_state, sources)
+
+    labels: list[str] = []
+    for block_id, state_slice in sorted(compiled.dynamic_state_slices.items(), key=lambda item: item[1].start):
+        width = state_slice.stop - state_slice.start
+        labels.extend(block_id if width == 1 else f"{block_id}.x{i + 1}" for i in range(width))
+    return {"A": a, "B": b, "C": c, "D": d, "state_labels": labels,
+            "output_labels": [scope.label for scope in compiled.scopes]}

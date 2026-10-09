@@ -591,7 +591,7 @@ export const EXAMPLE_PRESETS: ExamplePreset[] = [
         {
           id: "gain1",
           type: "Gain",
-          parameters: { k: 5 },
+          parameters: { k: 1.5 },
           input_ports: ["in"],
           output_ports: ["out"]
         },

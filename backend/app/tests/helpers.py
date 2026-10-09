@@ -3,6 +3,17 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.analysis.system import analyze_model
+from app.models.diagram import Diagram
+from app.simulation.model import compile_model
+
+
+def analyze(diagram: dict[str, Any] | Diagram) -> dict[str, Any]:
+    """System analysis of a diagram through the production pipeline."""
+
+    model = Diagram.model_validate(diagram) if isinstance(diagram, dict) else diagram
+    return analyze_model(compile_model(model).model)
+
 
 def block(
     block_id: str,

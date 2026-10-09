@@ -625,10 +625,12 @@ function analyzeFeedback(
     );
     const dynamicBlock = blocks.find((block) => !directFeedthrough(block));
     if (!dynamicBlock) {
+      // Whether such a loop is solvable (I - D·M nonsingular) is decided by the
+      // server when it assembles the model; the editor only points it out.
       addIssue(collector, {
         code: "algebraic-loop",
-        severity: "error",
-        message: `Алгебраическая петля без динамического блока: ${component.join(" → ")}.`,
+        severity: "warning",
+        message: `Алгебраическая петля без динамического блока: ${component.join(" → ")}. Её разрешимость проверит сервер при сборке модели.`,
         nodeId: component[0],
         nodeIds: [...component],
         edgeId: representativeEdge?.edgeId,

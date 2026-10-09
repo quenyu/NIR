@@ -76,13 +76,12 @@ import {
   defaultPosition,
   diagnosticTitle,
   diagramFromFlow,
-  diagramHasCycle,
   edgesFromDiagram,
-  formatValidationMessage,
   freeNodePosition,
   normalizeNodePositions,
   positionsFromNodes,
   positionsFromSubsystemParameters,
+  stabilityPresentation,
   toNode,
   type DiagramNode,
 } from "../features/modelingWorkspace";
@@ -313,15 +312,12 @@ function ModelingWorkspace() {
     if (!result?.success) {
       return [];
     }
-    const stability = result.system_analysis?.stability
-      ?? result.stability_analysis?.overall_status
-      ?? "не определена";
-    const stabilityTone = /unstable|неуст/i.test(String(stability)) ? "danger" : "success";
+    const stability = stabilityPresentation(result.system_analysis?.stability);
     return [
       { id: "signals", label: "Сигналы", value: Object.keys(result.outputs ?? {}).length },
       { id: "points", label: "Точек расчёта", value: result.time?.length ?? 0 },
       { id: "states", label: "Размерность x", value: result.system_analysis?.state_dimension ?? "—" },
-      { id: "stability", label: "Устойчивость", value: String(stability), tone: stabilityTone },
+      { id: "stability", label: "Устойчивость", value: stability.label, tone: stability.tone },
     ];
   }, [result]);
 
@@ -1147,13 +1143,9 @@ function ModelingWorkspace() {
           { id: "backend", label: "Проверка модели", status: "done" },
           { id: "solver", label: "Численный расчёт", status: "pending", detail: "Модель готова к запуску" },
         ]);
-        setInfo(
-          diagramHasCycle(diagram)
-            ? "Обратная связь допустима: цикл проходит через динамический блок."
-            : "Схема корректна.",
-        );
+        setInfo("Схема корректна: сервер собрал единую модель.");
       } else {
-        const messages = response.errors.map(formatValidationMessage);
+        const messages = response.errors;
         setErrors(messages);
         setDiagnosticsIssues((current) => [
           ...current.filter((issue) => issue.code !== "model-ready"),
@@ -1280,7 +1272,7 @@ function ModelingWorkspace() {
     } catch (error) {
       setResult(null);
       const messages = error instanceof SimulationApiError
-        ? (error.validationErrors.length > 0 ? error.validationErrors : [error.message]).map(formatValidationMessage)
+        ? (error.validationErrors.length > 0 ? error.validationErrors : [error.message])
         : [error instanceof Error ? error.message : "Не удалось выполнить моделирование."];
       setErrors(messages);
       setDiagnosticsIssues((current) => [

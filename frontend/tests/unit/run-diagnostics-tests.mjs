@@ -151,7 +151,7 @@ run("accepts feedback containing a dynamic block", () => {
   assert.ok(!report.issues.some((issue) => issue.code === "algebraic-loop"));
 });
 
-run("rejects an algebraic feedback loop", () => {
+run("flags an algebraic loop without blocking the run (the server decides solvability)", () => {
   const sum = {
     id: "sum1",
     type: "Sum",
@@ -175,8 +175,9 @@ run("rejects an algebraic feedback loop", () => {
       connection("gain1", "scope1"),
     ],
   });
-  assert.equal(report.canRun, false);
-  assert.ok(report.issues.some((issue) => issue.code === "algebraic-loop"));
+  assert.equal(report.canRun, true);
+  const loop = report.issues.find((issue) => issue.code === "algebraic-loop");
+  assert.equal(loop?.severity, "warning");
 });
 
 run("preserves React Flow edge IDs in issue references", () => {

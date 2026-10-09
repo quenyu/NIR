@@ -105,13 +105,7 @@ export function StateSpacePanel({ result }: { result: SimulationResponse | null 
   const stateMapping = getStateMapping(result.metadata);
   const indexBase = provenance?.index_base ?? 0;
   const matrixDimensions = provenance?.matrix_dimensions;
-  const verification = system.verification;
-  const maxResidual = verification
-    ? Math.max(
-        verification.max_state_residual ?? 0,
-        verification.max_output_residual ?? 0,
-      )
-    : null;
+  const loops = system.algebraic_loops ?? [];
 
   return (
     <div className="state-space-view">
@@ -171,26 +165,18 @@ export function StateSpacePanel({ result }: { result: SimulationResponse | null 
           />
         </div>
       </section>
-      {verification && (
-        <article
-          className={`model-verification-card ${verification.passed ? "is-verified" : "is-failed"}`}
-          data-testid="model-verification"
-        >
+      {loops.length > 0 && (
+        <article className="model-verification-card is-verified" data-testid="algebraic-loops">
           <div className="model-verification-card__status" aria-hidden="true">
-            <UiIcon name={verification.passed ? "check" : "info"} />
+            <UiIcon name="info" />
           </div>
           <div className="model-verification-card__copy">
-            <span>Проверка согласованности</span>
-            <strong>
-              {verification.passed
-                ? "Согласованность модели подтверждена"
-                : "Обнаружено расхождение модели и графа"}
-            </strong>
-            <small>{verification.description}</small>
+            <span>Алгебраические петли</span>
+            <strong>Решены при сборке: (I − D·M)·y = C·x + D·N·r</strong>
+            <small>{loops.map((loop) => loop.blocks.join(" → ")).join("; ")}</small>
           </div>
           <dl className="model-verification-card__metrics">
-            <div><dt>max residual</dt><dd>{formatResidual(maxResidual)}</dd></div>
-            <div><dt>Допуск</dt><dd>{formatResidual(verification.tolerance)}</dd></div>
+            <div><dt>κ max</dt><dd>{formatResidual(Math.max(...loops.map((loop) => loop.condition_number)))}</dd></div>
           </dl>
         </article>
       )}

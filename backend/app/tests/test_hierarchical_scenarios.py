@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.analysis.system import assemble_state_space
+from app.tests.helpers import analyze
 from app.examples.hierarchical_scenarios import SCENARIOS, hierarchical_closed_loop
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.hierarchy import flatten_diagram
 from app.simulation.service import simulate_request
-from app.validation.validator import validate_diagram
+from app.simulation.model import diagram_errors as validate_diagram
 
 
 EXPECTED_STATE_DIMENSIONS = {
@@ -25,8 +25,8 @@ def test_hierarchical_scenarios_compile_to_equivalent_flat_models() -> None:
         assert validate_diagram(hierarchical) == []
 
         flattened = flatten_diagram(hierarchical)
-        hierarchical_analysis = assemble_state_space(hierarchical)
-        flat_analysis = assemble_state_space(flattened)
+        hierarchical_analysis = analyze(hierarchical)
+        flat_analysis = analyze(flattened)
 
         assert hierarchical_analysis["state_dimension"] == EXPECTED_STATE_DIMENSIONS[name]
         for matrix_name in ("A", "B", "C", "D"):
@@ -38,7 +38,7 @@ def test_hierarchical_scenarios_compile_to_equivalent_flat_models() -> None:
 
 def test_three_level_closed_loop_has_hierarchical_states_and_is_stable() -> None:
     diagram = Diagram.model_validate(hierarchical_closed_loop())
-    analysis = assemble_state_space(diagram)
+    analysis = analyze(diagram)
 
     assert analysis["state_labels"] == [
         "plant::actuator::actuator_lag",
@@ -76,7 +76,7 @@ def test_three_level_closed_loop_has_hierarchical_states_and_is_stable() -> None
 
 def test_source_inside_subsystem_is_an_external_state_space_input() -> None:
     diagram = Diagram.model_validate(SCENARIOS["compact_five_subsystem_chain"]())
-    analysis = assemble_state_space(diagram)
+    analysis = analyze(diagram)
 
     assert analysis["input_blocks"] == ["reference::step"]
     assert analysis["input_dimension"] == 1

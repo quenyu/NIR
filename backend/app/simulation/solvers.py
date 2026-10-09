@@ -1,10 +1,22 @@
+"""Time integration of x' = f(t, x) with step discontinuities of the input.
+
+The input of the model is piecewise constant: it jumps at the StepInput
+instants. Every method integrates up to a jump and restarts from it, so the
+derivative is never evaluated across a discontinuity.
+"""
+
 from __future__ import annotations
 
-from collections.abc import Callable
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 from scipy.integrate import solve_ivp
+from scipy.linalg import expm
+
+Rhs = Callable[[float, np.ndarray], np.ndarray]
+
+SOLVE_IVP_RTOL = 1e-8
+SOLVE_IVP_ATOL = 1e-10
 
 
 def _validate_time_grid(t_eval: np.ndarray) -> None:
@@ -17,118 +29,120 @@ def _validate_time_grid(t_eval: np.ndarray) -> None:
 
 
 def rk4_integrate(
-    rhs: Callable[[float, np.ndarray], np.ndarray],
+    rhs: Rhs,
     x0: np.ndarray,
-    t_eval: np.ndarray,
+    t_grid: np.ndarray,
     *,
     breakpoints: Sequence[float] = (),
 ) -> np.ndarray:
-    _validate_time_grid(t_eval)
-    if x0.ndim != 1:
-        raise ValueError("Начальное состояние должно быть одномерным.")
+    """Classical RK4 on the given grid; every breakpoint must be a grid node.
 
-    state_dimension = x0.size
-    if state_dimension == 0:
-        return np.zeros((0, t_eval.size), dtype=float)
+    At a step that ends exactly on a breakpoint the last stage is evaluated
+    just before it (left limit of the input), so the jump is applied only at
+    the start of the next step.
+    """
 
-    trajectory = np.zeros((state_dimension, t_eval.size), dtype=float)
+    _validate_time_grid(t_grid)
+    if x0.size == 0:
+        return np.zeros((0, t_grid.size))
+
+    ends_on_jump = np.isin(t_grid[1:], np.asarray(breakpoints, dtype=float))
+    trajectory = np.zeros((x0.size, t_grid.size))
     trajectory[:, 0] = x0
-    x = x0.copy()
-    discontinuities = {float(value) for value in breakpoints}
-
-    for idx in range(t_eval.size - 1):
-        t0 = float(t_eval[idx])
-        h = float(t_eval[idx + 1] - t_eval[idx])
-
-        k1 = rhs(t0, x)
-        k2 = rhs(t0 + 0.5 * h, x + 0.5 * h * k1)
-        k3 = rhs(t0 + 0.5 * h, x + 0.5 * h * k2)
-        right_time = t0 + h
-        k4_time = (
-            float(np.nextafter(right_time, t0))
-            if any(np.isclose(right_time, value, rtol=0.0, atol=1e-14) for value in discontinuities)
-            else right_time
-        )
+    x = x0.astype(float).copy()
+    for index in range(t_grid.size - 1):
+        left, right = float(t_grid[index]), float(t_grid[index + 1])
+        h = right - left
+        k4_time = float(np.nextafter(right, left)) if ends_on_jump[index] else right
+        k1 = rhs(left, x)
+        k2 = rhs(left + 0.5 * h, x + 0.5 * h * k1)
+        k3 = rhs(left + 0.5 * h, x + 0.5 * h * k2)
         k4 = rhs(k4_time, x + h * k3)
-
-        if not all(np.all(np.isfinite(stage)) for stage in (k1, k2, k3, k4)):
-            raise FloatingPointError(
-                f"RK4 получил неконечную производную на шаге t={t0:g}."
-            )
-
         x = x + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
         if not np.all(np.isfinite(x)):
-            raise FloatingPointError(
-                f"RK4 получил неконечное состояние на шаге t={t0 + h:g}."
-            )
-        trajectory[:, idx + 1] = x
-
+            raise FloatingPointError(f"RK4: состояние перестало быть конечным в момент t={right:g}.")
+        trajectory[:, index + 1] = x
     return trajectory
 
 
 def solve_ivp_integrate(
-    rhs: Callable[[float, np.ndarray], np.ndarray],
+    rhs: Rhs,
     x0: np.ndarray,
     t_eval: np.ndarray,
     *,
     breakpoints: Sequence[float] = (),
 ) -> np.ndarray:
+    """Adaptive RK45 (Dormand-Prince), restarted at every breakpoint."""
+
     _validate_time_grid(t_eval)
-    if x0.ndim != 1:
-        raise ValueError("Начальное состояние должно быть одномерным.")
+    if x0.size == 0:
+        return np.zeros((0, t_eval.size))
 
-    state_dimension = x0.size
-    if state_dimension == 0:
-        return np.zeros((0, t_eval.size), dtype=float)
-
-    start = float(t_eval[0])
-    end = float(t_eval[-1])
-    discontinuities = sorted(
-        {
-            float(value)
-            for value in breakpoints
-            if np.isfinite(value) and start < float(value) < end
-        }
-    )
-    segment_ends = [*discontinuities, end]
-    trajectory = np.full((state_dimension, t_eval.size), np.nan, dtype=float)
+    start, end = float(t_eval[0]), float(t_eval[-1])
+    jumps = sorted({float(v) for v in breakpoints if start < float(v) < end})
+    trajectory = np.full((x0.size, t_eval.size), np.nan)
     trajectory[:, 0] = x0
-    current_state = x0.copy()
+    state = x0.astype(float).copy()
     left = start
+    for right in [*jumps, end]:
+        is_jump = right != end
 
-    for right in segment_ends:
-        is_discontinuity = right in discontinuities
-
-        def segment_rhs(t: float, state: np.ndarray) -> np.ndarray:
-            evaluation_time = (
-                float(np.nextafter(right, left))
-                if is_discontinuity and t >= right
-                else t
-            )
-            return rhs(evaluation_time, state)
+        def segment_rhs(t: float, x: np.ndarray, right: float = right, is_jump: bool = is_jump) -> np.ndarray:
+            # Inside the segment the input keeps its left-side value.
+            return rhs(float(np.nextafter(right, left)) if is_jump and t >= right else t, x)
 
         result = solve_ivp(
-            segment_rhs,
-            t_span=(left, right),
-            y0=current_state,
-            method="RK45",
-            rtol=1e-8,
-            atol=1e-10,
-            dense_output=True,
+            segment_rhs, (left, right), state, method="RK45",
+            rtol=SOLVE_IVP_RTOL, atol=SOLVE_IVP_ATOL, dense_output=True,
         )
         if not result.success or result.sol is None:
             raise RuntimeError(f"solve_ivp завершился с ошибкой: {result.message}")
-
         mask = (t_eval > left) & (t_eval <= right)
         if np.any(mask):
             trajectory[:, mask] = result.sol(t_eval[mask])
-        current_state = np.asarray(result.y[:, -1], dtype=float)
-        if not np.all(np.isfinite(current_state)):
-            raise FloatingPointError(
-                f"solve_ivp получил неконечное состояние в момент t={right:g}."
-            )
+        state = np.asarray(result.y[:, -1], dtype=float)
+        if not np.all(np.isfinite(state)):
+            raise FloatingPointError(f"solve_ivp: состояние перестало быть конечным в момент t={right:g}.")
         left = right
+    return trajectory
 
-    if not np.all(np.isfinite(trajectory)):
-        raise FloatingPointError("solve_ivp не сформировал конечную траекторию на всей сетке.")
+
+def exact_lti_integrate(
+    a: np.ndarray,
+    b: np.ndarray,
+    source_values: Callable[[float], np.ndarray],
+    x0: np.ndarray,
+    t_grid: np.ndarray,
+) -> np.ndarray:
+    """Exact solution of x' = A x + B r for r constant on every grid interval.
+
+    x(t + h) = e^{Ah} x(t) + G(h) B r,  G(h) = integral_0^h e^{A s} ds,
+    both taken from the matrix exponential of [[A, I], [0, 0]] h. The grid
+    must contain every input jump. Used as the reference for RK4 and RK45.
+    """
+
+    _validate_time_grid(t_grid)
+    n = x0.size
+    if n == 0:
+        return np.zeros((0, t_grid.size))
+
+    augmented = np.zeros((2 * n, 2 * n))
+    augmented[:n, :n] = a
+    augmented[:n, n:] = np.eye(n)
+    cache: dict[float, tuple[np.ndarray, np.ndarray]] = {}
+
+    trajectory = np.zeros((n, t_grid.size))
+    trajectory[:, 0] = x0
+    x = x0.astype(float).copy()
+    for index in range(t_grid.size - 1):
+        h = float(t_grid[index + 1] - t_grid[index])
+        # Steps of a uniform grid differ only by rounding; 13 significant
+        # digits keep one propagator per nominal step.
+        key = float(f"{h:.12e}")
+        if key not in cache:
+            exponential = expm(augmented * key)
+            cache[key] = (exponential[:n, :n], exponential[:n, n:])
+        phi, gamma = cache[key]
+        x = phi @ x + gamma @ (b @ source_values(float(t_grid[index])))
+        trajectory[:, index + 1] = x
     return trajectory

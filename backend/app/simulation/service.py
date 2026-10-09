@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.analysis.quality import compute_quality_metrics
-from app.analysis.stability import analyze_transfer_function_stability
-from app.analysis.system import assemble_state_space, explain_model_assembly
 from app.analysis.frequency import analyze_frequency_response
+from app.analysis.quality import compute_quality_metrics, steady_state_outputs, step_instant
+from app.analysis.stability import rk4_step_check
+from app.analysis.system import analyze_model, explain_model_assembly
 from app.models.api import SimulationRequest, SimulationResponse
-from app.simulation.compiler import compile_diagram
+from app.simulation.assembly import LinearModel
+from app.simulation.model import compile_model
 from app.simulation.solvers import rk4_integrate, solve_ivp_integrate
 
 
@@ -16,146 +17,107 @@ def build_time_grid(request: SimulationRequest) -> np.ndarray:
         return np.array(request.t_eval, dtype=float)
 
     assert request.dt is not None  # guaranteed by request validation
-    duration = request.t_end - request.t_start
-    count = int(np.floor(duration / request.dt)) + 1
+    count = int(np.floor((request.t_end - request.t_start) / request.dt)) + 1
     times = request.t_start + request.dt * np.arange(count, dtype=float)
-    if times[-1] < request.t_end:
+    # A remainder shorter than a millionth of dt is rounding, not a real step.
+    if request.t_end - times[-1] > 1e-6 * request.dt:
         times = np.append(times, request.t_end)
     else:
         times[-1] = request.t_end
     return times
 
 
-def _step_breakpoints(compiled, start: float, end: float) -> list[float]:
-    breakpoints: set[float] = set()
-    for block in compiled.diagram.blocks:
-        if block.type != "StepInput":
-            continue
-        raw_value = block.parameters.get("t0", 0.0)
-        try:
-            value = float(raw_value)
-        except (TypeError, ValueError):
-            continue
-        if start < value < end:
-            breakpoints.add(value)
-    return sorted(breakpoints)
+def _format_modes(modes: list[complex]) -> str:
+    return ", ".join(f"{p.real:.4g}{p.imag:+.4g}j" for p in modes[:4])
 
 
-def _assert_rk4_absolute_stability(system_analysis: dict, maximum_step: float) -> None:
-    unstable_numerical_modes: list[complex] = []
-    for pole_record in system_analysis.get("poles", []):
-        pole = complex(float(pole_record["real"]), float(pole_record["imag"]))
-        if pole.real >= 0.0:
-            continue
-        z = pole * maximum_step
-        amplification = 1.0 + z + z**2 / 2.0 + z**3 / 6.0 + z**4 / 24.0
-        if abs(amplification) >= 1.0 + 1e-12:
-            unstable_numerical_modes.append(pole)
-    if unstable_numerical_modes:
-        modes = ", ".join(
-            f"{value.real:.4g}{value.imag:+.4g}j"
-            for value in unstable_numerical_modes[:4]
-        )
+def _integrate(
+    model: LinearModel,
+    solver: str,
+    t_eval: np.ndarray,
+    breakpoints: list[float],
+    warnings: list[str],
+) -> np.ndarray:
+    if model.state_dimension == 0:
+        return np.zeros((0, t_eval.size))
+    if solver == "solve_ivp":
+        return solve_ivp_integrate(model.rhs, model.x0, t_eval, breakpoints=breakpoints)
+
+    grid = np.unique(np.concatenate((t_eval, np.asarray(breakpoints, dtype=float))))
+    check = rk4_step_check(model.a, float(np.max(np.diff(grid))))
+    if not check["stable"]:
         raise ValueError(
-            "Шаг RK4 находится вне области абсолютной устойчивости для мод: "
-            f"{modes}. Уменьшите dt или выберите solve_ivp."
+            "Шаг RK4 вне области устойчивости метода для мод "
+            f"{_format_modes(check['unstable_modes'])}: численное решение росло бы, "
+            f"хотя сама система не неустойчива. Уменьшите dt до {check['max_step']:.3g} "
+            "или выберите solve_ivp."
         )
+    if check["inaccurate_growing_modes"]:
+        warnings.append(
+            "Для растущих мод "
+            f"{_format_modes(check['inaccurate_growing_modes'])} множитель роста RK4 за шаг "
+            "отличается от точного более чем на 1 %: уменьшите dt для количественной точности."
+        )
+    trajectory = rk4_integrate(model.rhs, model.x0, grid, breakpoints=breakpoints)
+    # Every requested time is an exact node of the merged grid.
+    return trajectory[:, np.searchsorted(grid, t_eval)]
 
 
 def simulate_request(request: SimulationRequest) -> SimulationResponse:
-    compiled = compile_diagram(request.diagram)
+    compiled = compile_model(request.diagram)
+    model = compiled.model
     t_eval = build_time_grid(request)
-    x0 = compiled.initial_state
-    system_analysis = assemble_state_space(request.diagram, compiled=compiled)
-    breakpoints = _step_breakpoints(compiled, float(t_eval[0]), float(t_eval[-1]))
-
-    if x0.size == 0:
-        trajectory = np.zeros((0, t_eval.size), dtype=float)
-        used_solver = "static"
-    elif request.solver == "rk4":
-        integration_grid = np.unique(
-            np.concatenate((t_eval, np.asarray(breakpoints, dtype=float)))
-        )
-        _assert_rk4_absolute_stability(
-            system_analysis,
-            float(np.max(np.diff(integration_grid))),
-        )
-        integrated = rk4_integrate(
-            compiled.rhs,
-            x0,
-            integration_grid,
-            breakpoints=breakpoints,
-        )
-        output_indices = np.searchsorted(integration_grid, t_eval)
-        if not np.allclose(
-            integration_grid[output_indices],
-            t_eval,
-            rtol=0.0,
-            atol=1e-12,
-        ):
-            raise RuntimeError("Не удалось сопоставить внутреннюю и выходную сетки RK4.")
-        trajectory = integrated[:, output_indices]
-        used_solver = "rk4"
-    else:
-        trajectory = solve_ivp_integrate(
-            compiled.rhs,
-            x0,
-            t_eval,
-            breakpoints=breakpoints,
-        )
-        used_solver = "solve_ivp"
-
-    outputs: dict[str, list[float]] = {scope.label: [] for scope in compiled.scopes}
-    references = {
-        scope.label: scope.reference
-        for scope in compiled.scopes
-        if scope.reference is not None
-    }
-    for idx, t_now in enumerate(t_eval):
-        x_now = trajectory[:, idx] if x0.size > 0 else np.zeros(0, dtype=float)
-        scope_values = compiled.evaluate_scopes(float(t_now), x_now)
-        for label, value in scope_values.items():
-            outputs[label].append(float(value))
-
-    metadata = {
-        "requested_solver": request.solver,
-        "used_solver": used_solver,
-        "state_dimension": int(x0.size),
-        "block_count": len(request.diagram.blocks),
-        "scope_count": len(compiled.scopes),
-        "step_breakpoints": breakpoints,
-        "provenance": explain_model_assembly(compiled),
-    }
-
+    breakpoints = model.step_breakpoints(float(t_eval[0]), float(t_eval[-1]))
     warnings: list[str] = []
-    if any(scope.reference is None for scope in compiled.scopes):
-        warnings.append(
-            "Для Scope без reference показатели перерегулирования и времени "
-            "регулирования используют последний отсчёт как оценку установившегося значения."
+
+    trajectory = _integrate(model, request.solver, t_eval, breakpoints, warnings)
+    sources = np.stack([model.source_values(float(t)) for t in t_eval], axis=1) if model.sources \
+        else np.zeros((0, t_eval.size))
+    readings = model.c @ trajectory + model.d @ sources
+    outputs = {scope.label: readings[index].tolist() for index, scope in enumerate(model.scopes)}
+
+    system_analysis = analyze_model(model)
+    stability = system_analysis["stability"]
+    steady = steady_state_outputs(model, stability)
+    steady_values = {
+        scope.label: (None if steady is None else float(steady[index]))
+        for index, scope in enumerate(model.scopes)
+    }
+    unavailable_reason = None
+    if steady is None:
+        unavailable_reason = (
+            "Установившееся значение не существует: система неустойчива."
+            if stability == "unstable"
+            else "Установившееся значение не определено: система на границе устойчивости."
         )
-    if references and any(
-        float(block.parameters.get("t0", 0.0)) > float(t_eval[0])
-        for block in compiled.diagram.blocks
-        if block.type == "StepInput"
-    ):
+    if len({s.t0 for s in model.sources if s.amplitude != 0.0}) > 1:
         warnings.append(
-            "В схеме есть задержанный StepInput: общие показатели качества Scope "
-            "считаются от начала моделирования, поскольку Scope.reference не задаёт "
-            "однозначную связь с конкретным входом. Настройка PID учитывает t0 выбранного входа."
+            "Ступенчатые входы включаются в разные моменты: показатели качества "
+            "отсчитываются от первой ступеньки."
         )
 
     return SimulationResponse(
         success=True,
-        time=[float(value) for value in t_eval],
+        time=t_eval.tolist(),
         outputs=outputs,
-        metadata=metadata,
-        stability_analysis=analyze_transfer_function_stability(request.diagram),
+        metadata={
+            "requested_solver": request.solver,
+            "used_solver": "static" if model.state_dimension == 0 else request.solver,
+            "state_dimension": model.state_dimension,
+            "block_count": len(compiled.flat.blocks),
+            "scope_count": len(model.scopes),
+            "step_breakpoints": breakpoints,
+            "provenance": explain_model_assembly(model),
+        },
         system_analysis=system_analysis,
-        frequency_analysis=analyze_frequency_response(system_analysis),
+        frequency_analysis=analyze_frequency_response(model),
         quality_metrics=compute_quality_metrics(
             t_eval,
             outputs,
-            references=references or None,
+            steady_values=steady_values,
+            t_step=step_instant(model, float(t_eval[0])),
+            unavailable_reason=unavailable_reason,
+            references={s.label: s.reference for s in model.scopes if s.reference is not None},
         ),
         warnings=warnings,
         validation_errors=[],

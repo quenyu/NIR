@@ -7,7 +7,6 @@ import pytest
 
 from app.models.diagram import Diagram
 from app.simulation.assembly import ModelAssemblyError, assemble_linear_model
-from app.simulation.compiler import compile_diagram
 from app.simulation.hierarchy import flatten_diagram
 from app.tests.structural_cases import (
     EVALUATION_POINTS,
@@ -17,7 +16,7 @@ from app.tests.structural_cases import (
     model_transfer,
     static_loop_case,
 )
-from app.analysis.system import assemble_state_space
+from app.tests.reference_evaluator import compile_diagram, probe_state_space
 
 # See test_structural_models.py: assembly is exact linear algebra on small,
 # well-conditioned matrices.
@@ -70,12 +69,12 @@ def test_assembly_agrees_with_block_evaluator(case) -> None:
     """Same realizations and state order, so matrices must agree entrywise."""
 
     diagram = Diagram.model_validate(case.diagram)
-    legacy = assemble_state_space(diagram)
     compiled = compile_diagram(diagram)
+    legacy = probe_state_space(compiled)
     model = _assemble(case.diagram)
 
     for name, matrix in zip("ABCD", (model.a, model.b, model.c, model.d)):
-        expected = np.asarray(legacy["matrices"][name], dtype=float).reshape(matrix.shape)
+        expected = legacy[name]
         np.testing.assert_allclose(matrix, expected, rtol=0.0, atol=DIFFERENTIAL_ATOL, err_msg=name)
     np.testing.assert_array_equal(model.x0, compiled.initial_state)
     assert [entry.label for entry in model.states] == legacy["state_labels"]

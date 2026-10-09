@@ -167,54 +167,6 @@ export function positionsFromSubsystemParameters(
   );
 }
 
-export function diagramHasCycle(diagram: Diagram): boolean {
-  const adjacency = new Map<string, string[]>();
-  for (const block of diagram.blocks) {
-    adjacency.set(block.id, []);
-  }
-  for (const connection of diagram.connections) {
-    adjacency.get(connection.from_block)?.push(connection.to_block);
-  }
-
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-
-  function visit(blockId: string): boolean {
-    if (visiting.has(blockId)) {
-      return true;
-    }
-    if (visited.has(blockId)) {
-      return false;
-    }
-    visiting.add(blockId);
-    for (const nextBlockId of adjacency.get(blockId) ?? []) {
-      if (visit(nextBlockId)) {
-        return true;
-      }
-    }
-    visiting.delete(blockId);
-    visited.add(blockId);
-    return false;
-  }
-
-  return diagram.blocks.some((block) => visit(block.id));
-}
-
-export function formatValidationMessage(message: string): string {
-  const normalized = message.toLowerCase();
-  if (
-    normalized.includes("algebraic")
-    || normalized.includes("cycle")
-    || normalized.includes("loop")
-    || normalized.includes("direct-feedthrough")
-    || normalized.includes("алгебра")
-    || normalized.includes("петл")
-  ) {
-    return "Алгебраическая петля: в цикле нет динамического блока или есть direct-feedthrough зависимость.";
-  }
-  return message;
-}
-
 export function russianCountNoun(
   value: number,
   one: string,
@@ -286,4 +238,17 @@ export function diagramFromFlow(nodes: DiagramNode[], edges: Edge[]): Diagram {
       to_port: edge.targetHandle ?? "in",
     })),
   };
+}
+
+export type StabilityTone = "success" | "warning" | "danger" | "default";
+
+const STABILITY_LABELS: Record<string, { label: string; tone: StabilityTone }> = {
+  stable: { label: "Асимптотически устойчива", tone: "success" },
+  marginal: { label: "На границе устойчивости", tone: "warning" },
+  unstable: { label: "Неустойчива", tone: "danger" },
+  not_applicable: { label: "Статическая модель", tone: "default" },
+};
+
+export function stabilityPresentation(status: string | undefined): { label: string; tone: StabilityTone } {
+  return STABILITY_LABELS[status ?? ""] ?? { label: "Не определена", tone: "default" };
 }

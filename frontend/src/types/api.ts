@@ -67,19 +67,29 @@ export interface SimulationMetadata extends Record<string, unknown> {
   provenance?: SimulationModelProvenance | SimulationStateMapping;
 }
 
+export interface StructuralProperty {
+  applicable: boolean;
+  rank: number;
+  full_rank: boolean | null;
+  margin: number | null;
+  weak: boolean;
+  method: string;
+}
+
+export interface FrequencyChannel {
+  input_block: string;
+  output_label: string;
+  magnitude_db: Array<number | null>;
+  phase_deg: Array<number | null>;
+  real: Array<number | null>;
+  imag: Array<number | null>;
+}
+
 export interface SimulationResponse {
   success: boolean;
   time: number[];
   outputs: Record<string, number[]>;
   metadata: SimulationMetadata;
-  stability_analysis: {
-    overall_status?: string;
-    transfer_functions?: Array<{
-      block_id: string;
-      status: string;
-      poles: Array<{ real: number; imag: number }>;
-    }>;
-  };
   system_analysis?: {
     model_type: string;
     state_dimension: number;
@@ -101,45 +111,18 @@ export interface SimulationResponse {
     spectral_abscissa: number | null;
     stability_degree: number | null;
     stability: string;
-    controllability: { rank: number; applicable?: boolean; full_rank: boolean | null };
-    observability: { rank: number; applicable?: boolean; full_rank: boolean | null };
-    verification?: {
-      status: "verified" | "failed";
-      passed: boolean;
-      method: string;
-      description: string;
-      dimensions_valid: boolean;
-      finite: boolean;
-      expected_shapes: Record<"A" | "B" | "C" | "D", [number, number]>;
-      probe_count: number;
-      tolerance: number;
-      zero_state_residual: number | null;
-      zero_output_residual: number | null;
-      max_state_residual: number | null;
-      max_output_residual: number | null;
-    };
+    stability_reason?: string;
+    controllability: StructuralProperty;
+    observability: StructuralProperty;
+    algebraic_loops?: Array<{ blocks: string[]; condition_number: number }>;
   };
   frequency_analysis?: {
     available: boolean;
     reason?: string;
-    input_block?: string;
-    output_label?: string;
-    channel_kind?: string;
-    channel_warning?: string | null;
     frequency_rad_s?: number[];
-    magnitude?: number[];
-    magnitude_db?: number[];
-    phase_deg?: number[];
-    nyquist_real?: number[];
-    nyquist_imag?: number[];
-    gain_crossovers_rad_s?: number[];
-    phase_crossovers_rad_s?: number[];
-    phase_margins_deg?: number[];
-    gain_margins_db?: number[];
-    critical_phase_margin_deg?: number | null;
-    critical_gain_margin_db?: number | null;
-    gain_crossover_status?: string;
     frequency_range_rad_s?: [number, number];
+    channels?: FrequencyChannel[];
+    truncated?: boolean;
     interpretation?: string;
   };
   quality_metrics: Record<
@@ -158,6 +141,7 @@ export interface SimulationResponse {
       integral_squared_error: number | null;
       settling_band_percent: number | null;
       reference: number | string | null;
+      reason?: string | null;
     }
   >;
   warnings: string[];

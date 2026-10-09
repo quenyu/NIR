@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Plot from "./Plot";
 import { PLOT_FONT_COLOR, PLOT_UI_FONT_FAMILY } from "./plotTypography";
-import type { SimulationResponse } from "../types/api";
+import type { SimulationResponse, SystemAnalysis } from "../types/api";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
 import { useDialogFocus } from "../hooks/useDialogFocus";
+import { stabilityPresentation } from "../features/modelingWorkspace";
 
 interface SimulationChartProps {
   result: SimulationResponse | null;
@@ -60,20 +61,6 @@ function formatPole(pole: { real: number; imag: number }): string {
   return `${real} ${pole.imag >= 0 ? "+" : "-"} ${imagAbs}i`;
 }
 
-function stabilityLabel(status: string | undefined): string {
-  if (status === "stable") return "Устойчива";
-  if (status === "unstable") return "Неустойчива";
-  if (status === "marginal") return "На границе";
-  return "Не применимо";
-}
-
-function formatMargin(value: number | null | undefined, unit: string): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "Не найден";
-  }
-  return `${value.toFixed(2)} ${unit}`;
-}
-
 const frequencyPlotTheme = {
   paper_bgcolor: "#000000",
   plot_bgcolor: "#000000",
@@ -90,6 +77,7 @@ export function SimulationChart({
   onTabChange,
 }: SimulationChartProps) {
   const [activeTab, setActiveTab] = useState<ScopeTab>(requestedTab ?? "plot");
+  const [channelIndex, setChannelIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const expandedDialogRef = useDialogFocus<HTMLElement>(isExpanded, () => setIsExpanded(false));
 
@@ -204,23 +192,34 @@ export function SimulationChart({
     );
   }
 
+  function propertySummary(property: SystemAnalysis["controllability"], full: string): string {
+    if (!property.applicable) return "Не применимо к статической модели";
+    if (!property.full_rank) return "Неполный ранг (тест PBH)";
+    return property.weak ? `${full}, но близка к вырождению` : full;
+  }
+
   function renderAnalysisTab() {
     if (!result || !result.success) {
       return <p>Анализ станет доступен после завершения моделирования.</p>;
     }
 
-    const stabilityItems = result.stability_analysis?.transfer_functions ?? [];
     const qualityEntries = Object.entries(result.quality_metrics ?? {});
     const system = result.system_analysis;
+    const stability = stabilityPresentation(system?.stability);
 
     return (
       <div className="scope-analysis">
         <h3>Собранная система</h3>
         {system ? (
           <div className="system-analysis-grid">
-            <article className={`system-analysis-card status-${system.stability}`}>
+            <article className={`system-analysis-card tone-${stability.tone}`} data-testid="system-stability">
               <span>Устойчивость</span>
-              <strong>{stabilityLabel(system.stability)}</strong>
+              <strong>{stability.label}</strong>
+              <small>{system.stability_reason}</small>
+            </article>
+            <article className="system-analysis-card">
+              <span>Полюса</span>
+              <strong>{system.poles.length}</strong>
               <small>{system.poles.length > 0 ? system.poles.map(formatPole).join(", ") : "Статическая модель"}</small>
             </article>
             <article className="system-analysis-card">
@@ -229,47 +228,18 @@ export function SimulationChart({
               <small>α = −max Re(λ)</small>
             </article>
             <article className="system-analysis-card">
-              <span>Порядок модели</span>
-              <strong>{system.state_dimension}</strong>
-              <small>{system.input_dimension} входов · {system.output_dimension} выходов</small>
-            </article>
-            <article className="system-analysis-card">
               <span>Управляемость</span>
               <strong>{system.controllability.rank} / {system.state_dimension}</strong>
-              <small>{system.state_dimension === 0 ? "Не применимо к статической модели" : system.controllability.full_rank ? "Полностью управляема" : "Неполный ранг"}</small>
+              <small>{propertySummary(system.controllability, "Полностью управляема")}</small>
             </article>
             <article className="system-analysis-card">
               <span>Наблюдаемость</span>
               <strong>{system.observability.rank} / {system.state_dimension}</strong>
-              <small>{system.state_dimension === 0 ? "Не применимо к статической модели" : system.observability.full_rank ? "Полностью наблюдаема" : "Неполный ранг"}</small>
+              <small>{propertySummary(system.observability, "Полностью наблюдаема")}</small>
             </article>
           </div>
         ) : (
           <p>Общая модель системы пока недоступна.</p>
-        )}
-
-        <h3>Передаточные функции</h3>
-        {stabilityItems.length === 0 ? (
-          <p>В схеме нет блоков передаточной функции.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Блок</th>
-                <th>Статус</th>
-                <th>Полюса</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stabilityItems.map((item) => (
-                <tr key={item.block_id}>
-                  <td>{item.block_id}</td>
-                  <td>{item.status}</td>
-                  <td>{item.poles.map(formatPole).join(", ") || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
 
         <h3>Показатели качества</h3>
@@ -280,14 +250,13 @@ export function SimulationChart({
             <thead>
               <tr>
                 <th>Сигнал</th>
-                <th>Задание</th>
-                <th>Цель метрики</th>
-                <th>Финал</th>
-                <th>Стат. ошибка</th>
-                <th>Максимум</th>
+                <th>y(∞)</th>
+                <th>y(t_end)</th>
                 <th>Перерег., %</th>
-                <th>Регулир., с</th>
-                <th>Нарастание, с</th>
+                <th>t_рег (2 %), с</th>
+                <th>t_нар, с</th>
+                <th>Задание</th>
+                <th>Стат. ошибка</th>
                 <th>IAE</th>
                 <th>ISE</th>
               </tr>
@@ -296,20 +265,26 @@ export function SimulationChart({
               {qualityEntries.map(([label, metrics]) => (
                 <tr key={label}>
                   <td>{label}</td>
-                  <td>{formatReference(metrics.reference)}</td>
-                  <td title={metrics.target_source ?? undefined}>{formatOptionalNumber(metrics.target_value)}</td>
+                  <td title="Установившееся значение по модели: (D − C·A⁻¹·B)·r">{formatOptionalNumber(metrics.target_value)}</td>
                   <td>{formatOptionalNumber(metrics.final_value)}</td>
-                  <td>{formatOptionalNumber(metrics.steady_state_error)}</td>
-                  <td>{formatOptionalNumber(metrics.max_value)}</td>
                   <td>{formatOptionalNumber(metrics.overshoot_percent)}</td>
                   <td>{formatOptionalNumber(metrics.settling_time)}</td>
                   <td>{formatOptionalNumber(metrics.rise_time)}</td>
+                  <td>{formatReference(metrics.reference)}</td>
+                  <td>{formatOptionalNumber(metrics.steady_state_error)}</td>
                   <td>{formatOptionalNumber(metrics.integral_absolute_error)}</td>
                   <td>{formatOptionalNumber(metrics.integral_squared_error)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+        {qualityEntries.some(([, metrics]) => metrics.reason) && (
+          <ul className="quality-notes">
+            {qualityEntries.filter(([, metrics]) => metrics.reason).map(([label, metrics]) => (
+              <li key={label}><strong>{label}:</strong> {metrics.reason}</li>
+            ))}
+          </ul>
         )}
       </div>
     );
@@ -347,42 +322,36 @@ export function SimulationChart({
     }
 
     const omega = frequency.frequency_rad_s ?? [];
-    const magnitudeDb = frequency.magnitude_db ?? [];
-    const phaseDeg = frequency.phase_deg ?? [];
-    const nyquistReal = frequency.nyquist_real ?? [];
-    const nyquistImag = frequency.nyquist_imag ?? [];
+    const channels = frequency.channels ?? [];
+    const channel = channels[Math.min(channelIndex, channels.length - 1)];
+    if (!channel) {
+      return <p>Нет каналов вход → выход.</p>;
+    }
 
     return (
       <div className="frequency-view" data-testid="frequency-analysis-ready">
         <header className="frequency-view__header">
-          <div>
-            <span>Канал анализа</span>
-            <strong>{frequency.input_block} → {frequency.output_label}</strong>
-          </div>
-          <div className="frequency-margin-cards">
-            <article>
-              <span>Формальный запас по фазе</span>
-              <strong>{formatMargin(frequency.critical_phase_margin_deg, "°")}</strong>
-            </article>
-            <article>
-              <span>Формальный запас по амплитуде</span>
-              <strong>{formatMargin(frequency.critical_gain_margin_db, "дБ")}</strong>
-            </article>
-          </div>
+          <label className="frequency-channel-picker">
+            <span>Канал</span>
+            <select value={channels.indexOf(channel)} onChange={(event) => setChannelIndex(Number(event.target.value))}>
+              {channels.map((item, index) => (
+                <option key={`${item.input_block}-${item.output_label}`} value={index}>
+                  {item.input_block} → {item.output_label}
+                </option>
+              ))}
+            </select>
+          </label>
         </header>
-
-        {frequency.channel_warning && <p className="frequency-interpretation">{frequency.channel_warning}</p>}
 
         <div className="frequency-plot-grid">
           <article className="frequency-plot-card">
-            <h3>АЧХ · диаграмма Боде</h3>
+            <h3>ЛАЧХ</h3>
             <Plot
-              data={[{ x: omega, y: magnitudeDb, type: "scatter", mode: "lines", line: { color: "#e2e1dc", width: 2.2 } }]}
+              data={[{ x: omega, y: channel.magnitude_db, type: "scatter", mode: "lines", connectgaps: false, line: { color: "#e2e1dc", width: 2.2 } }]}
               layout={{
                 ...frequencyPlotTheme,
                 xaxis: { type: "log", title: "ω, рад/с", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
                 yaxis: { title: "L(ω), дБ", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
-                shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: 0, y1: 0, line: { color: "#8f9196", width: 1, dash: "dot" } }]
               }}
               config={{ displayModeBar: false, responsive: true }}
               style={{ width: "100%", height: "250px" }}
@@ -391,14 +360,13 @@ export function SimulationChart({
           </article>
 
           <article className="frequency-plot-card">
-            <h3>ФЧХ · диаграмма Боде</h3>
+            <h3>ЛФЧХ</h3>
             <Plot
-              data={[{ x: omega, y: phaseDeg, type: "scatter", mode: "lines", line: { color: "#9da3aa", width: 2.2 } }]}
+              data={[{ x: omega, y: channel.phase_deg, type: "scatter", mode: "lines", connectgaps: false, line: { color: "#9da3aa", width: 2.2 } }]}
               layout={{
                 ...frequencyPlotTheme,
                 xaxis: { type: "log", title: "ω, рад/с", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
                 yaxis: { title: "φ(ω), °", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
-                shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: -180, y1: -180, line: { color: "#b99d9f", width: 1, dash: "dot" } }]
               }}
               config={{ displayModeBar: false, responsive: true }}
               style={{ width: "100%", height: "250px" }}
@@ -407,17 +375,11 @@ export function SimulationChart({
           </article>
 
           <article className="frequency-plot-card frequency-plot-card--nyquist">
-            <h3>Годограф Найквиста</h3>
+            <h3>АФЧХ</h3>
             <Plot
-              data={[
-                { x: nyquistReal, y: nyquistImag, type: "scatter", mode: "lines", name: "+ω", line: { color: "#d5d5d0", width: 2.2 } },
-                { x: [...nyquistReal].reverse(), y: [...nyquistImag].reverse().map((value) => -value), type: "scatter", mode: "lines", name: "−ω", line: { color: "#8b8e93", width: 1.2, dash: "dot" } },
-                { x: [-1], y: [0], type: "scatter", mode: "markers", name: "−1 + j0", marker: { color: "#b99d9f", size: 8, symbol: "x" } }
-              ]}
+              data={[{ x: channel.real, y: channel.imag, type: "scatter", mode: "lines", connectgaps: false, line: { color: "#d5d5d0", width: 2.2 } }]}
               layout={{
                 ...frequencyPlotTheme,
-                showlegend: true,
-                legend: { orientation: "h", x: 0, y: 1.12 },
                 xaxis: { title: "Re W(jω)", gridcolor: "#292b2f", zerolinecolor: "#52555a", scaleanchor: "y", scaleratio: 1 },
                 yaxis: { title: "Im W(jω)", gridcolor: "#292b2f", zerolinecolor: "#52555a" }
               }}

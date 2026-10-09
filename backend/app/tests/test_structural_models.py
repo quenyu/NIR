@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from app.analysis.system import assemble_state_space
+from app.tests.reference_evaluator import compile_diagram, probe_state_space
 from app.models.diagram import Diagram
 from app.tests.structural_cases import EVALUATION_POINTS, all_cases, model_transfer
 
@@ -21,17 +21,9 @@ TRANSFER_RTOL = 1e-10
 LEGACY_CASES = [case for case in all_cases() if case.supported_by_legacy_compiler]
 
 
-def _legacy_model(diagram: dict) -> tuple[np.ndarray, ...]:
-    analysis = assemble_state_space(Diagram.model_validate(diagram))
-    matrices = analysis["matrices"]
-    n, m, p = analysis["state_dimension"], analysis["input_dimension"], analysis["output_dimension"]
-    return (
-        np.asarray(matrices["A"], dtype=float).reshape(n, n),
-        np.asarray(matrices["B"], dtype=float).reshape(n, m),
-        np.asarray(matrices["C"], dtype=float).reshape(p, n),
-        np.asarray(matrices["D"], dtype=float).reshape(p, m),
-        analysis["output_labels"],
-    )
+def _legacy_model(diagram: dict) -> tuple:
+    probed = probe_state_space(compile_diagram(Diagram.model_validate(diagram)))
+    return probed["A"], probed["B"], probed["C"], probed["D"], probed["output_labels"]
 
 
 @pytest.mark.parametrize("case", LEGACY_CASES, ids=lambda case: case.name)

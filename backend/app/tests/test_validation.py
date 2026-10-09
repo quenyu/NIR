@@ -7,7 +7,7 @@ from app.tests.helpers import (
     first_order_step_diagram,
     integrator_step_diagram,
 )
-from app.validation.validator import validate_diagram
+from app.simulation.model import diagram_errors as validate_diagram
 
 
 def test_missing_connection_detected() -> None:

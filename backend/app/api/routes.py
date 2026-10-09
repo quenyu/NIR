@@ -15,9 +15,8 @@ from app.models.projects import (
     ProjectRecord,
     ProjectUpdateRequest,
 )
-from app.simulation.compiler import DiagramCompilationError
+from app.simulation.model import DiagramCompilationError, diagram_errors
 from app.simulation.service import simulate_request
-from app.validation.validator import validate_diagram
 from app.storage.projects import (
     ProjectNotFoundError,
     ProjectRepository,
@@ -34,7 +33,7 @@ def health() -> dict[str, str]:
 
 
 def _validate_project_diagram(payload: ProjectCreateRequest | ProjectUpdateRequest) -> None:
-    errors = validate_diagram(payload.payload.diagram)
+    errors = diagram_errors(payload.payload.diagram)
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
@@ -101,40 +100,21 @@ def delete_project(
 
 @router.post("/validate", response_model=ValidateResponse)
 def validate_endpoint(payload: ValidateRequest) -> ValidateResponse:
-    errors = validate_diagram(payload.diagram)
+    errors = diagram_errors(payload.diagram)
     return ValidateResponse(valid=not errors, errors=errors)
 
 
 @router.post("/simulate", response_model=SimulationResponse)
 def simulate_endpoint(payload: SimulationRequest) -> SimulationResponse | JSONResponse:
-    errors = validate_diagram(payload.diagram)
-    if errors:
-        response = SimulationResponse(
-            success=False,
-            time=[],
-            outputs={},
-            metadata={"requested_solver": payload.solver},
-            validation_errors=errors,
-        )
-        return JSONResponse(status_code=422, content=response.model_dump())
-
     try:
         return simulate_request(payload)
     except DiagramCompilationError as exc:
-        response = SimulationResponse(
-            success=False,
-            time=[],
-            outputs={},
-            metadata={"requested_solver": payload.solver},
-            validation_errors=exc.errors,
-        )
-        return JSONResponse(status_code=422, content=response.model_dump())
+        errors = exc.errors
     except (ValueError, RuntimeError, FloatingPointError) as exc:
-        response = SimulationResponse(
-            success=False,
-            time=[],
-            outputs={},
-            metadata={"requested_solver": payload.solver},
-            validation_errors=[str(exc)],
-        )
-        return JSONResponse(status_code=422, content=response.model_dump())
+        errors = [str(exc)]
+    response = SimulationResponse(
+        success=False,
+        metadata={"requested_solver": payload.solver},
+        validation_errors=errors,
+    )
+    return JSONResponse(status_code=422, content=response.model_dump())

@@ -137,7 +137,7 @@ def test_rk4_rejects_step_outside_absolute_stability_region() -> None:
     raw = first_order_step_diagram()
     next(block for block in raw["blocks"] if block["id"] == "lag1")["parameters"]["T"] = 0.001
 
-    with pytest.raises(ValueError, match="области абсолютной устойчивости"):
+    with pytest.raises(ValueError, match="вне области устойчивости метода"):
         simulate_request(
             SimulationRequest(
                 diagram=Diagram.model_validate(raw),

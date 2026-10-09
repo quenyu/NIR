@@ -4,13 +4,13 @@ import json
 
 import numpy as np
 
-from app.analysis.system import assemble_state_space
+from app.analysis.system import analyze_model
 from app.examples.hierarchical_scenarios import SCENARIOS
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.hierarchy import flatten_diagram
 from app.simulation.service import simulate_request
-from app.validation.validator import validate_diagram
+from app.simulation.model import compile_model, diagram_errors
 
 
 def main() -> None:
@@ -19,13 +19,13 @@ def main() -> None:
 
     for name, build_scenario in SCENARIOS.items():
         diagram = Diagram.model_validate(build_scenario())
-        errors = validate_diagram(diagram)
+        errors = diagram_errors(diagram)
         if errors:
             raise RuntimeError(f"{name}: {'; '.join(errors)}")
 
         flattened = flatten_diagram(diagram)
-        analysis = assemble_state_space(diagram)
-        flat_analysis = assemble_state_space(flattened)
+        analysis = analyze_model(compile_model(diagram).model)
+        flat_analysis = analyze_model(compile_model(flattened).model)
         matrices_match = all(
             np.allclose(
                 analysis["matrices"][matrix_name],
@@ -45,7 +45,8 @@ def main() -> None:
                 solver="rk4",
             )
         )
-        output = np.asarray(simulation.outputs["y"], dtype=float)
+        # The first Scope; inside a subsystem its label carries the subsystem path.
+        output = np.asarray(next(iter(simulation.outputs.values())), dtype=float)
         if not np.isfinite(output).all():
             raise RuntimeError(f"{name}: переходная характеристика содержит NaN/Inf")
 
