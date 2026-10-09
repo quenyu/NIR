@@ -12,8 +12,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from app.tests.reference_evaluator import compile_diagram, probe_state_space
 from app.models.diagram import Diagram
+from app.tests.reference_evaluator import compile_diagram, probe_state_space
 from app.tests.structural_cases import EVALUATION_POINTS, all_cases, model_transfer
 
 TRANSFER_RTOL = 1e-10

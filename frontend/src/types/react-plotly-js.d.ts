@@ -1,9 +1,7 @@
-declare module "react-plotly.js";
-
 declare module "react-plotly.js/factory" {
   import type { ComponentType } from "react";
 
-  export default function createPlotlyComponent(plotly: unknown): ComponentType<any>;
+  export default function createPlotlyComponent(plotly: unknown): ComponentType<Record<string, unknown>>;
 }
 
 declare module "plotly.js/lib/core" {
@@ -16,14 +14,4 @@ declare module "plotly.js/lib/core" {
 declare module "plotly.js/lib/scatter" {
   const scatter: unknown;
   export default scatter;
-}
-
-declare module "plotly.js/lib/box" {
-  const box: unknown;
-  export default box;
-}
-
-declare module "plotly.js/lib/histogram" {
-  const histogram: unknown;
-  export default histogram;
 }

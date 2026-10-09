@@ -37,7 +37,8 @@ def test_repeated_semisimple_pole_on_axis_is_marginal() -> None:
     """Two independent integrators: double eigenvalue 0 with two eigenvectors."""
 
     assert classify_stability(np.zeros((2, 2)))["status"] == "marginal"
-    assert classify_stability(block_diag(companion([1.0, 0.0, 1.0]), companion([1.0, 0.0, 1.0])))["status"] == "marginal"
+    two_oscillators = block_diag(companion([1.0, 0.0, 1.0]), companion([1.0, 0.0, 1.0]))
+    assert classify_stability(two_oscillators)["status"] == "marginal"
 
 
 def test_empty_model_is_not_applicable() -> None:

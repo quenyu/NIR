@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.tests.helpers import analyze
 from app.models.diagram import Diagram
-from app.tests.helpers import closed_loop_dynamic_diagram, first_order_step_diagram
+from app.tests.helpers import analyze, closed_loop_dynamic_diagram, first_order_step_diagram
 
 
 def test_first_order_diagram_is_assembled_into_state_space() -> None:

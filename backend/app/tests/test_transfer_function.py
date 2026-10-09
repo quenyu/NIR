@@ -8,9 +8,8 @@ from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.assembly import block_realization
 from app.simulation.model import compile_model
-from app.simulation.service import simulate_request
 from app.simulation.model import diagram_errors as validate_diagram
-
+from app.simulation.service import simulate_request
 
 
 def _tf_realization(diagram: Diagram):
@@ -100,7 +99,7 @@ def test_transfer_function_rejects_zero_denominator_leading_coefficient() -> Non
 
     errors = validate_diagram(diagram)
 
-    assert any("denominator[0]" in message and "zero" in message for message in errors)
+    assert any("denominator[0]" in message and "равен 0" in message for message in errors)
 
 
 def test_transfer_function_rejects_improper_numerator_order() -> None:
@@ -108,7 +107,7 @@ def test_transfer_function_rejects_improper_numerator_order() -> None:
 
     errors = validate_diagram(diagram)
 
-    assert any("numerator" in message and "order" in message for message in errors)
+    assert any("numerator" in message and "порядок знаменателя" in message for message in errors)
 
 
 def test_stable_transfer_function_step_response_converges_to_one() -> None:

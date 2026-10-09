@@ -5,7 +5,7 @@ import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
@@ -90,7 +90,7 @@ class ProjectRepository:
 
     @staticmethod
     def _timestamp() -> str:
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        return datetime.now(UTC).replace(microsecond=0).isoformat()
 
     @staticmethod
     def _payload_json(payload: ProjectPayload) -> str:

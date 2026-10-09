@@ -37,7 +37,7 @@ class DiagramBuilder:
         )
         return block_id
 
-    def subsystem(self, block_id: str, inner: "DiagramBuilder") -> str:
+    def subsystem(self, block_id: str, inner: DiagramBuilder) -> str:
         return self.add(block_id, "Subsystem", diagram=inner.build())
 
     def link(self, source: str, target: str, *, out: str = "out", into: str = "in") -> None:

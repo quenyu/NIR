@@ -29,7 +29,7 @@ export const BLOCK_TYPES: BlockType[] = [
   "Scope"
 ];
 
-export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
+const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
   StepInput: "Ступенчатый вход",
   Gain: "Усиление",
   Sum: "Сумматор",
@@ -154,14 +154,16 @@ export function defaultParametersFor(type: BlockType): Record<string, unknown> {
   return structuredClone(source);
 }
 
+/**
+ * Signs of a Sum block, read exactly like backend get_signs(): a missing value
+ * means the default ["+", "-"], every list item becomes one input port, and
+ * invalid items are kept so that validation can point at them.
+ */
 export function normalizedSigns(raw: unknown): string[] {
-  if (!Array.isArray(raw)) {
+  if (raw === undefined || raw === null) {
     return ["+", "-"];
   }
-  const parsed = raw
-    .map((item) => String(item).trim())
-    .filter((item) => item === "+" || item === "-");
-  return parsed.length > 0 ? parsed : ["+", "-"];
+  return Array.isArray(raw) ? raw.map((item) => String(item)) : [];
 }
 
 export function subsystemDiagram(parameters: Record<string, unknown>): Diagram | null {

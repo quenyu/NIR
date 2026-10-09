@@ -9,8 +9,8 @@ from app.examples.hierarchical_scenarios import SCENARIOS
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.hierarchy import flatten_diagram
-from app.simulation.service import simulate_request
 from app.simulation.model import compile_model, diagram_errors
+from app.simulation.service import simulate_request
 
 
 def main() -> None:

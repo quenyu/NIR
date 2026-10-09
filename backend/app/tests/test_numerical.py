@@ -111,7 +111,13 @@ def test_step_discontinuity_is_integrated_piecewise() -> None:
         {
             "blocks": [
                 block("step", "StepInput", parameters={"amplitude": 1.0, "t0": t0}, output_ports=["out"]),
-                block("plant", "FirstOrderLag", parameters={"k": 1.0, "T": time_constant, "y0": 0.0}, input_ports=["in"], output_ports=["out"]),
+                block(
+                    "plant",
+                    "FirstOrderLag",
+                    parameters={"k": 1.0, "T": time_constant, "y0": 0.0},
+                    input_ports=["in"],
+                    output_ports=["out"],
+                ),
                 block("scope", "Scope", parameters={"label": "y"}, input_ports=["in"]),
             ],
             "connections": [

@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.tests.helpers import analyze
 from app.examples.hierarchical_scenarios import SCENARIOS, hierarchical_closed_loop
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.hierarchy import flatten_diagram
-from app.simulation.service import simulate_request
 from app.simulation.model import diagram_errors as validate_diagram
-
+from app.simulation.service import simulate_request
+from app.tests.helpers import analyze
 
 EXPECTED_STATE_DIMENSIONS = {
     "two_level_plant": 1,

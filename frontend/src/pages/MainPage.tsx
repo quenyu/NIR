@@ -397,6 +397,8 @@ function ModelingWorkspace() {
     if (preset) {
       applyPreset(preset);
     }
+    // Runs once on mount: ?example=<id> opens a preset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

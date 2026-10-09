@@ -91,7 +91,9 @@ def solve_ivp_integrate(
     for right in [*jumps, end]:
         is_jump = right != end
 
-        def segment_rhs(t: float, x: np.ndarray, right: float = right, is_jump: bool = is_jump) -> np.ndarray:
+        def segment_rhs(
+            t: float, x: np.ndarray, left: float = left, right: float = right, is_jump: bool = is_jump
+        ) -> np.ndarray:
             # Inside the segment the input keeps its left-side value.
             return rhs(float(np.nextafter(right, left)) if is_jump and t >= right else t, x)
 

@@ -10,9 +10,9 @@ import type {
 export type DiagramNode = Node<BlockNodeData>;
 
 export const NODE_LAYOUT_WIDTH = 224;
-export const NODE_LAYOUT_MIN_HEIGHT = 104;
+const NODE_LAYOUT_MIN_HEIGHT = 104;
 export const NODE_LAYOUT_GAP_X = 48;
-export const NODE_LAYOUT_GAP_Y = 40;
+const NODE_LAYOUT_GAP_Y = 40;
 
 export function nodeLayoutHeight(data: BlockNodeData): number {
   if (data.blockType !== "Sum") {

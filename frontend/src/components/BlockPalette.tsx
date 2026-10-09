@@ -48,7 +48,7 @@ const BLOCK_GROUPS: Array<{
 export function BlockPalette({ onAddBlock, insideSubsystem = false }: BlockPaletteProps) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase("ru"));
-  const groups = insideSubsystem
+  const groups = useMemo(() => insideSubsystem
     ? [
         ...BLOCK_GROUPS,
         {
@@ -59,7 +59,7 @@ export function BlockPalette({ onAddBlock, insideSubsystem = false }: BlockPalet
           ],
         },
       ]
-    : BLOCK_GROUPS;
+    : BLOCK_GROUPS, [insideSubsystem]);
   const visibleGroups = useMemo(() => {
     if (!deferredQuery) return groups;
     return groups

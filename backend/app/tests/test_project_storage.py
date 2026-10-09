@@ -4,6 +4,7 @@ import gc
 import json
 import sqlite3
 import warnings
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,8 @@ def test_legacy_database_without_schema_version_is_migrated(tmp_path: Path) -> N
         "block_count INTEGER NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
     )
     connection.execute(
-        "INSERT INTO projects VALUES ('p1', 'Старый проект', ?, 3, 4, '2026-07-01T10:00:00+00:00', '2026-07-02T10:00:00+00:00')",
+        "INSERT INTO projects VALUES ('p1', 'Старый проект', ?, 3, 4, "
+        "'2026-07-01T10:00:00+00:00', '2026-07-02T10:00:00+00:00')",
         (json.dumps(payload),),
     )
     connection.commit()
@@ -55,13 +57,13 @@ def test_legacy_database_without_schema_version_is_migrated(tmp_path: Path) -> N
     record = repository.get("p1")
     assert record.version == 4
     assert record.payload.diagram.blocks[1].id == "lag1"
-    with sqlite3.connect(path) as check:
+    with closing(sqlite3.connect(path)) as check, check:
         assert check.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
 
 
 def test_newer_schema_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "future.db"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
     with pytest.raises(RuntimeError, match="более новой версией"):
         ProjectRepository(path)
@@ -70,7 +72,7 @@ def test_newer_schema_is_refused(tmp_path: Path) -> None:
 def test_corrupted_record_is_reported(tmp_path: Path) -> None:
     repository = ProjectRepository(tmp_path / "projects.db")
     record = repository.create(_request())
-    with sqlite3.connect(tmp_path / "projects.db") as connection:
+    with closing(sqlite3.connect(tmp_path / "projects.db")) as connection, connection:
         connection.execute("UPDATE projects SET payload_json = '{broken' WHERE id = ?", (record.id,))
 
     with pytest.raises(ProjectCorruptedError):

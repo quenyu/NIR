@@ -257,7 +257,7 @@ def _topological_components(g: np.ndarray) -> list[list[int]]:
     successors: list[set[int]] = [set() for _ in range(n_components)]
     indegree = [0] * n_components
     rows, cols = np.nonzero(g)
-    for i, j in zip(rows, cols):
+    for i, j in zip(rows, cols, strict=True):
         source, target = labels[j], labels[i]
         if source != target and target not in successors[source]:
             successors[source].add(target)

@@ -326,13 +326,13 @@ def validate_parameters(block_type: str, parameters: dict[str, Any]) -> list[str
         elif block_type == "TransferFunction":
             numerator, denominator = get_transfer_function_coefficients(parameters)
             if denominator[0] == 0.0:
-                errors.append("Parameter 'denominator[0]' must not be zero.")
+                errors.append("Параметр 'denominator[0]' не должен быть равен 0.")
             else:
                 numerator_order = polynomial_order(numerator)
                 denominator_order = len(denominator) - 1
                 if numerator_order > denominator_order:
                     errors.append(
-                        "Parameter 'numerator' order must not be greater than denominator order."
+                        "Порядок числителя 'numerator' не должен превышать порядок знаменателя."
                     )
 
         elif block_type == "PIDController":

@@ -1,3 +1,4 @@
+import { blockParameterProblems, polynomialOrder } from "./blockParameters";
 import {
   BLOCK_TYPES,
   inputPortsFor,
@@ -112,17 +113,6 @@ const SEVERITY_ORDER: Record<DiagnosticSeverity, number> = {
   info: 2,
 };
 
-const NUMERIC_DEFAULTS: Partial<
-  Record<BlockType, Record<string, number>>
-> = {
-  StepInput: { amplitude: 1, t0: 0 },
-  Gain: { k: 1 },
-  Integrator: { k: 1, y0: 0 },
-  FirstOrderLag: { k: 1, T: 1, y0: 0 },
-  SecondOrderOscillator: { k: 1, wn: 1, zeta: 0.2, y0: 0, v0: 0 },
-  ButterworthLPF: { order: 2, cutoff_freq: 10, y0: 0 },
-  PIDController: { kp: 1, ki: 0, kd: 0, filter_n: 20 },
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -157,286 +147,36 @@ function connectionEdgeId(connection: DiagramConnection, index: number): string 
   return `edge-${index}-${connection.from_block}-${connection.to_block}`;
 }
 
-function finiteNumericParameter(
-  block: DiagramBlock,
-  key: string,
-  fallback: number,
-  collector: Collector,
-  scopePath: readonly string[],
-): number | null {
-  const raw = block.parameters[key] ?? fallback;
-  if (
-    typeof raw === "boolean" ||
-    raw === null ||
-    (typeof raw === "string" && raw.trim().length === 0) ||
-    (typeof raw !== "number" && typeof raw !== "string")
-  ) {
-    addIssue(collector, {
-      code: "invalid-parameter",
-      severity: "error",
-      message: `Блок «${block.id}»: параметр ${key} должен быть числом.`,
-      nodeId: block.id,
-      portId: key,
-      scopePath,
-    });
-    return null;
-  }
 
-  const parsed = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(parsed)) {
-    addIssue(collector, {
-      code: "invalid-parameter",
-      severity: "error",
-      message: `Блок «${block.id}»: параметр ${key} должен быть конечным числом.`,
-      nodeId: block.id,
-      portId: key,
-      scopePath,
-    });
-    return null;
-  }
-  return parsed;
-}
 
-function numericVectorParameter(
-  block: DiagramBlock,
-  key: string,
-  fallback: readonly number[],
-  collector: Collector,
-  scopePath: readonly string[],
-): number[] | null {
-  const raw = block.parameters[key] ?? fallback;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    addIssue(collector, {
-      code: "invalid-parameter",
-      severity: "error",
-      message: `Блок «${block.id}»: параметр ${key} должен быть непустым массивом чисел.`,
-      nodeId: block.id,
-      portId: key,
-      scopePath,
-    });
-    return null;
-  }
 
-  const parsed = raw.map((value) => {
-    if (
-      typeof value === "boolean" ||
-      value === null ||
-      (typeof value === "string" && value.trim().length === 0) ||
-      (typeof value !== "number" && typeof value !== "string")
-    ) {
-      return Number.NaN;
-    }
-    return typeof value === "number" ? value : Number(value);
-  });
-  if (parsed.some((value) => !Number.isFinite(value))) {
-    addIssue(collector, {
-      code: "invalid-parameter",
-      severity: "error",
-      message: `Блок «${block.id}»: параметр ${key} содержит нечисловое значение.`,
-      nodeId: block.id,
-      portId: key,
-      scopePath,
-    });
-    return null;
-  }
-  return parsed;
-}
-
-function polynomialOrder(coefficients: readonly number[]): number {
-  const firstNonZero = coefficients.findIndex((coefficient) => coefficient !== 0);
-  return firstNonZero < 0 ? 0 : coefficients.length - firstNonZero - 1;
-}
-
-function addParameterRangeIssue(
-  collector: Collector,
-  block: DiagramBlock,
-  key: string,
-  condition: boolean,
-  requirement: string,
-  scopePath: readonly string[],
-): void {
-  if (condition) {
-    return;
-  }
-  addIssue(collector, {
-    code: "invalid-parameter",
-    severity: "error",
-    message: `Блок «${block.id}»: ${key} ${requirement}.`,
-    nodeId: block.id,
-    portId: key,
-    scopePath,
-  });
-}
 
 function validateBlockParameters(
   block: DiagramBlock,
   collector: Collector,
   scopePath: readonly string[],
 ): void {
-  const defaults = NUMERIC_DEFAULTS[block.type];
-  if (defaults) {
-    for (const [key, fallback] of Object.entries(defaults)) {
-      finiteNumericParameter(block, key, fallback, collector, scopePath);
-    }
+  for (const problem of blockParameterProblems(block.type, block.parameters)) {
+    addIssue(collector, {
+      code: "invalid-parameter",
+      severity: "error",
+      message: `Блок «${block.id}»: ${problem.message}.`,
+      nodeId: block.id,
+      portId: problem.key,
+      scopePath,
+    });
   }
-
-  switch (block.type) {
-    case "FirstOrderLag": {
-      const value = finiteNumberWithoutIssue(block.parameters.T ?? 1);
-      if (value !== null) {
-        addParameterRangeIssue(collector, block, "T", value > 0, "должно быть больше 0", scopePath);
-      }
-      break;
+  if (block.type === "Subsystem") {
+    const nested = block.parameters.diagram;
+    if (!isRecord(nested) || !Array.isArray(nested.blocks) || !Array.isArray(nested.connections)) {
+      addIssue(collector, {
+        code: "nested-diagram-invalid",
+        severity: "error",
+        message: `Подсистема «${block.id}» не содержит корректной схемы.`,
+        nodeId: block.id,
+        scopePath,
+      });
     }
-    case "SecondOrderOscillator": {
-      const wn = finiteNumberWithoutIssue(block.parameters.wn ?? 1);
-      const zeta = finiteNumberWithoutIssue(block.parameters.zeta ?? 0.2);
-      if (wn !== null) {
-        addParameterRangeIssue(collector, block, "wn", wn > 0, "должно быть больше 0", scopePath);
-      }
-      if (zeta !== null) {
-        addParameterRangeIssue(collector, block, "zeta", zeta >= 0, "не должно быть меньше 0", scopePath);
-      }
-      break;
-    }
-    case "TransferFunction": {
-      const numerator = numericVectorParameter(block, "numerator", [1], collector, scopePath);
-      const denominator = numericVectorParameter(block, "denominator", [1, 1], collector, scopePath);
-      if (denominator && denominator[0] === 0) {
-        addParameterRangeIssue(
-          collector,
-          block,
-          "denominator[0]",
-          false,
-          "не должно быть равно 0",
-          scopePath,
-        );
-      } else if (
-        numerator &&
-        denominator &&
-        polynomialOrder(numerator) > denominator.length - 1
-      ) {
-        addParameterRangeIssue(
-          collector,
-          block,
-          "numerator",
-          false,
-          "не должно иметь порядок выше знаменателя",
-          scopePath,
-        );
-      }
-      break;
-    }
-    case "Sum": {
-      const signs = block.parameters.signs ?? ["+", "-"];
-      if (
-        !Array.isArray(signs) ||
-        signs.length === 0 ||
-        signs.some((sign) => sign !== "+" && sign !== "-")
-      ) {
-        addIssue(collector, {
-          code: "invalid-parameter",
-          severity: "error",
-          message: `Блок «${block.id}»: signs должен содержать только знаки «+» и «-».`,
-          nodeId: block.id,
-          portId: "signs",
-          scopePath,
-        });
-      }
-      break;
-    }
-    case "ButterworthLPF": {
-      const order = finiteNumberWithoutIssue(block.parameters.order ?? 2);
-      const cutoff = finiteNumberWithoutIssue(block.parameters.cutoff_freq ?? 10);
-      if (order !== null) {
-        addParameterRangeIssue(
-          collector,
-          block,
-          "order",
-          Number.isInteger(order) && order >= 1 && order <= 10,
-          "должно быть целым числом от 1 до 10",
-          scopePath,
-        );
-      }
-      if (cutoff !== null) {
-        addParameterRangeIssue(
-          collector,
-          block,
-          "cutoff_freq",
-          cutoff > 0,
-          "должно быть больше 0",
-          scopePath,
-        );
-      }
-      break;
-    }
-    case "PIDController": {
-      const filterN = finiteNumberWithoutIssue(block.parameters.filter_n ?? 20);
-      if (filterN !== null) {
-        addParameterRangeIssue(
-          collector,
-          block,
-          "filter_n",
-          filterN > 0,
-          "должно быть больше 0",
-          scopePath,
-        );
-      }
-      break;
-    }
-    case "SubsystemInput":
-    case "SubsystemOutput": {
-      const port = block.parameters.port;
-      if (typeof port !== "string" || port.trim().length === 0) {
-        addIssue(collector, {
-          code: "invalid-parameter",
-          severity: "error",
-          message: `Блок «${block.id}»: имя внешнего порта не задано.`,
-          nodeId: block.id,
-          portId: "port",
-          scopePath,
-        });
-      }
-      break;
-    }
-    case "Subsystem": {
-      const nested = block.parameters.diagram;
-      if (
-        !isRecord(nested) ||
-        !Array.isArray(nested.blocks) ||
-        !Array.isArray(nested.connections)
-      ) {
-        addIssue(collector, {
-          code: "nested-diagram-invalid",
-          severity: "error",
-          message: `Подсистема «${block.id}» не содержит корректной схемы.`,
-          nodeId: block.id,
-          scopePath,
-        });
-      }
-      break;
-    }
-    case "Scope": {
-      const label = block.parameters.label;
-      if (label !== undefined && label !== null && typeof label === "object") {
-        addIssue(collector, {
-          code: "invalid-parameter",
-          severity: "error",
-          message: `Блок «${block.id}»: имя сигнала должно быть строкой.`,
-          nodeId: block.id,
-          portId: "label",
-          scopePath,
-        });
-      }
-      if ("reference" in block.parameters) {
-        finiteNumericParameter(block, "reference", 0, collector, scopePath);
-      }
-      break;
-    }
-    case "StepInput":
-    case "Gain":
-    case "Integrator":
-      break;
   }
 }
 
@@ -1068,4 +808,3 @@ export function diagnoseFlowModel(
 }
 
 /** Readable alias for callers that operate on persisted Diagram objects. */
-export const runModelDiagnostics = diagnoseDiagram;

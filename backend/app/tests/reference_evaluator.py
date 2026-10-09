@@ -9,7 +9,6 @@ loops, which the assembly solves.
 from __future__ import annotations
 
 from collections import deque
-
 from dataclasses import dataclass
 
 import numpy as np
@@ -24,8 +23,8 @@ from app.core.block_specs import (
     butterworth_coefficients,
     get_numeric_parameter,
     get_pid_coefficients,
-    get_transfer_function_coefficients,
     get_signs,
+    get_transfer_function_coefficients,
     has_direct_feedthrough,
     is_dynamic_block,
 )

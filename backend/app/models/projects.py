@@ -27,7 +27,7 @@ class ProjectViewport(BaseModel):
     zoom: float
 
     @model_validator(mode="after")
-    def validate_viewport(self) -> "ProjectViewport":
+    def validate_viewport(self) -> ProjectViewport:
         if not all(math.isfinite(value) for value in (self.x, self.y, self.zoom)):
             raise ValueError("Параметры viewport должны быть конечными числами.")
         if self.zoom <= 0.0:
@@ -47,7 +47,7 @@ class ProjectSimulationSettings(BaseModel):
     dt: float = 0.01
 
     @model_validator(mode="after")
-    def validate_time_settings(self) -> "ProjectSimulationSettings":
+    def validate_time_settings(self) -> ProjectSimulationSettings:
         if not all(math.isfinite(value) for value in (self.t_start, self.t_end, self.dt)):
             raise ValueError("Параметры времени должны быть конечными числами.")
         if self.t_end <= self.t_start:

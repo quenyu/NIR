@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from app.models.diagram import Diagram
+from app.simulation.model import diagram_errors as validate_diagram
 from app.tests.helpers import (
     closed_loop_dynamic_diagram,
     deep_copy_diagram,
     first_order_step_diagram,
     integrator_step_diagram,
 )
-from app.simulation.model import diagram_errors as validate_diagram
 
 
 def test_missing_connection_detected() -> None:

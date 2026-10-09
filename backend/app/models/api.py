@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.diagram import Diagram
 
-
 MAX_SIMULATION_POINTS = 200_000
 
 
@@ -29,7 +28,7 @@ class SimulationRequest(BaseModel):
     solver: Literal["rk4", "solve_ivp"] = "solve_ivp"
 
     @model_validator(mode="after")
-    def validate_time_definition(self) -> "SimulationRequest":
+    def validate_time_definition(self) -> SimulationRequest:
         if not math.isfinite(self.t_start) or not math.isfinite(self.t_end):
             raise ValueError("'t_start' и 't_end' должны быть конечными числами.")
         if self.t_end <= self.t_start:
@@ -50,7 +49,7 @@ class SimulationRequest(BaseModel):
                 )
             if any(not math.isfinite(value) for value in self.t_eval):
                 raise ValueError("Все значения 't_eval' должны быть конечными.")
-            if any(t2 <= t1 for t1, t2 in zip(self.t_eval[:-1], self.t_eval[1:])):
+            if any(t2 <= t1 for t1, t2 in zip(self.t_eval[:-1], self.t_eval[1:], strict=True)):
                 raise ValueError("'t_eval' должен быть строго возрастающим.")
             if not math.isclose(self.t_eval[0], self.t_start, rel_tol=1e-12, abs_tol=1e-12):
                 raise ValueError("Первый отсчёт 't_eval' должен совпадать с 't_start'.")

@@ -1,3 +1,4 @@
+import { blockParameterProblems } from "./blockParameters";
 import {
   inputPortsFor,
   isBlockType,
@@ -7,8 +8,8 @@ import {
   type DiagramConnection,
 } from "../types/diagram";
 
-export const PROJECT_FORMAT = "nir-dynamics-project" as const;
-export const PROJECT_VERSION = 1 as const;
+const PROJECT_FORMAT = "nir-dynamics-project" as const;
+const PROJECT_VERSION = 1 as const;
 export const MAX_PROJECT_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 export type ProjectSolver = "rk4" | "solve_ivp";
@@ -162,183 +163,17 @@ function parseParameters(
   return structuredClone(value);
 }
 
-function numericParameter(
-  parameters: Record<string, unknown>,
-  key: string,
-  fallback: number,
-  path: string,
-  errors: string[],
-): number {
-  const raw = parameters[key] ?? fallback;
-  if (typeof raw === "boolean") {
-    errors.push(`${path}.${key}: ожидается число, а не логическое значение.`);
-    return fallback;
-  }
-  const parsed = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(parsed)) {
-    errors.push(`${path}.${key}: ожидается конечное число.`);
-    return fallback;
-  }
-  return parsed;
-}
-
-function numericVectorParameter(
-  parameters: Record<string, unknown>,
-  key: string,
-  fallback: number[],
-  path: string,
-  errors: string[],
-): number[] {
-  const raw = parameters[key] ?? fallback;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    errors.push(`${path}.${key}: ожидается непустой массив чисел.`);
-    return fallback;
-  }
-  return raw.map((item, index) => {
-    if (typeof item === "boolean") {
-      errors.push(`${path}.${key}[${index}]: ожидается конечное число.`);
-      return 0;
-    }
-    const parsed = typeof item === "number" ? item : Number(item);
-    if (!Number.isFinite(parsed)) {
-      errors.push(`${path}.${key}[${index}]: ожидается конечное число.`);
-      return 0;
-    }
-    return parsed;
-  });
-}
-
-function polynomialOrder(coefficients: number[]): number {
-  const firstNonZero = coefficients.findIndex(
-    (coefficient) => coefficient !== 0,
-  );
-  return firstNonZero < 0 ? 0 : coefficients.length - firstNonZero - 1;
-}
-
 function validateBlockParameters(
   type: DiagramBlock["type"],
   parameters: Record<string, unknown>,
   path: string,
   errors: string[],
 ): void {
-  switch (type) {
-    case "StepInput":
-      numericParameter(parameters, "amplitude", 1, path, errors);
-      numericParameter(parameters, "t0", 0, path, errors);
-      break;
-    case "Gain":
-      numericParameter(parameters, "k", 1, path, errors);
-      break;
-    case "Integrator":
-      numericParameter(parameters, "k", 1, path, errors);
-      numericParameter(parameters, "y0", 0, path, errors);
-      break;
-    case "FirstOrderLag": {
-      numericParameter(parameters, "k", 1, path, errors);
-      const timeConstant = numericParameter(parameters, "T", 1, path, errors);
-      numericParameter(parameters, "y0", 0, path, errors);
-      if (timeConstant <= 0) {
-        errors.push(`${path}.T: значение должно быть больше 0.`);
-      }
-      break;
-    }
-    case "SecondOrderOscillator": {
-      numericParameter(parameters, "k", 1, path, errors);
-      const naturalFrequency = numericParameter(
-        parameters,
-        "wn",
-        1,
-        path,
-        errors,
-      );
-      const damping = numericParameter(parameters, "zeta", 0.2, path, errors);
-      numericParameter(parameters, "y0", 0, path, errors);
-      numericParameter(parameters, "v0", 0, path, errors);
-      if (naturalFrequency <= 0) {
-        errors.push(`${path}.wn: значение должно быть больше 0.`);
-      }
-      if (damping < 0) {
-        errors.push(`${path}.zeta: значение должно быть не меньше 0.`);
-      }
-      break;
-    }
-    case "TransferFunction": {
-      const numerator = numericVectorParameter(
-        parameters,
-        "numerator",
-        [1],
-        path,
-        errors,
-      );
-      const denominator = numericVectorParameter(
-        parameters,
-        "denominator",
-        [1, 1],
-        path,
-        errors,
-      );
-      if (denominator[0] === 0) {
-        errors.push(`${path}.denominator[0]: значение не должно быть равно 0.`);
-      } else if (polynomialOrder(numerator) > denominator.length - 1) {
-        errors.push(
-          `${path}.numerator: порядок числителя не должен превышать порядок знаменателя.`,
-        );
-      }
-      break;
-    }
-    case "Sum": {
-      const signs = parameters.signs;
-      if (!Array.isArray(signs) || signs.length === 0) {
-        errors.push(`${path}.signs: ожидается непустой массив знаков.`);
-      } else if (signs.some((sign) => sign !== "+" && sign !== "-")) {
-        errors.push(`${path}.signs: допустимы только знаки «+» и «-».`);
-      }
-      break;
-    }
-    case "ButterworthLPF": {
-      const order = numericParameter(parameters, "order", 2, path, errors);
-      const cutoff = numericParameter(
-        parameters,
-        "cutoff_freq",
-        10,
-        path,
-        errors,
-      );
-      numericParameter(parameters, "y0", 0, path, errors);
-      if (!Number.isInteger(order) || order < 1 || order > 10) {
-        errors.push(`${path}.order: ожидается целое число от 1 до 10.`);
-      }
-      if (cutoff <= 0) {
-        errors.push(`${path}.cutoff_freq: значение должно быть больше 0.`);
-      }
-      break;
-    }
-    case "PIDController": {
-      numericParameter(parameters, "kp", 1, path, errors);
-      numericParameter(parameters, "ki", 0, path, errors);
-      numericParameter(parameters, "kd", 0, path, errors);
-      const filterN = numericParameter(parameters, "filter_n", 20, path, errors);
-      if (filterN <= 0) {
-        errors.push(`${path}.filter_n: значение должно быть больше 0.`);
-      }
-      break;
-    }
-    case "Subsystem":
-      parseDiagram(parameters.diagram, errors, `${path}.diagram`, true);
-      break;
-    case "SubsystemInput":
-    case "SubsystemOutput":
-      asNonEmptyString(parameters.port, `${path}.port`, errors);
-      break;
-    case "Scope":
-      if (
-        parameters.label !== undefined &&
-        parameters.label !== null &&
-        typeof parameters.label === "object"
-      ) {
-        errors.push(`${path}.label: ожидается строковое значение.`);
-      }
-      break;
+  for (const problem of blockParameterProblems(type, parameters)) {
+    errors.push(`${path}.${problem.key}: ${problem.message}.`);
+  }
+  if (type === "Subsystem") {
+    parseDiagram(parameters.diagram, errors, `${path}.diagram`, true);
   }
 }
 
@@ -840,7 +675,7 @@ export function serializeDiagramProject(project: DiagramProjectFile): string {
   return `${JSON.stringify(project, null, 2)}\n`;
 }
 
-export function buildProjectFilename(date = new Date()): string {
+function buildProjectFilename(date = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return (
     [

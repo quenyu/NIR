@@ -10,12 +10,11 @@ from app.core.block_specs import (
     butterworth_coefficients,
     validate_parameters,
 )
+from app.experiments.reference_models import butterworth_lpf_step_response
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.service import simulate_request
 from app.tests.helpers import butterworth_lpf_step_diagram
-from app.experiments.reference_models import butterworth_lpf_step_response
-
 
 # ---------------------------------------------------------------------------
 # Тесты вычисления коэффициентов Баттерворта

@@ -250,5 +250,28 @@ run("detects direct feedthrough through a nested subsystem", () => {
   assert.ok(report.issues.some((issue) => issue.code === "algebraic-loop"));
 });
 
+run("reads Sum signs like the backend: invalid signs keep their port and are flagged", () => {
+  const sum = {
+    id: "sum1",
+    type: "Sum",
+    parameters: { signs: ["+", "x", "-"] },
+    input_ports: ["in1", "in2", "in3"],
+    output_ports: ["out"],
+  };
+  const report = diagnostics.diagnoseDiagram({
+    blocks: [step(), sum, scope()],
+    connections: [
+      connection("step1", "sum1", "in1"),
+      connection("step1", "sum1", "in2"),
+      connection("step1", "sum1", "in3"),
+      connection("sum1", "scope1"),
+    ],
+  });
+  assert.ok(!report.issues.some((issue) => issue.code === "port-mismatch"));
+  const invalid = report.issues.find((issue) => issue.code === "invalid-parameter");
+  assert.equal(invalid?.portId, "signs");
+  assert.equal(report.canRun, false);
+});
+
 await rm(tempDir, { recursive: true, force: true });
 console.log("All diagnostics tests passed.");

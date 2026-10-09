@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
-from app.tests.helpers import analyze
 from app.core.block_specs import get_pid_coefficients
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
-from app.simulation.service import simulate_request
-from app.tests.helpers import block, connection
 from app.simulation.model import diagram_errors as validate_diagram
+from app.simulation.service import simulate_request
+from app.tests.helpers import analyze, block, connection
 
 
 def pid_closed_loop_diagram(*, kp: float, ki: float, kd: float = 0.0) -> dict:
@@ -47,7 +45,10 @@ def test_pid_coefficients_cover_p_pi_pd_and_pid() -> None:
     assert get_pid_coefficients({"kp": 2.0, "ki": 0.0, "kd": 0.0, "filter_n": 10.0}) == ([2.0], [1.0])
     assert get_pid_coefficients({"kp": 2.0, "ki": 3.0, "kd": 0.0, "filter_n": 10.0}) == ([2.0, 3.0], [1.0, 0.0])
     assert get_pid_coefficients({"kp": 2.0, "ki": 0.0, "kd": 0.5, "filter_n": 10.0}) == ([7.0, 20.0], [1.0, 10.0])
-    assert get_pid_coefficients({"kp": 2.0, "ki": 3.0, "kd": 0.5, "filter_n": 10.0}) == ([7.0, 23.0, 30.0], [1.0, 10.0, 0.0])
+    assert get_pid_coefficients({"kp": 2.0, "ki": 3.0, "kd": 0.5, "filter_n": 10.0}) == (
+        [7.0, 23.0, 30.0],
+        [1.0, 10.0, 0.0],
+    )
 
 
 def test_pid_rejects_non_positive_derivative_filter() -> None:

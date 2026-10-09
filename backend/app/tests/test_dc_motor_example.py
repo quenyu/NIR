@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.tests.helpers import analyze
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.hierarchy import flatten_diagram
-from app.simulation.service import simulate_request
 from app.simulation.model import diagram_errors as validate_diagram
-
+from app.simulation.service import simulate_request
+from app.tests.helpers import analyze
 
 EXAMPLE_PATH = Path(__file__).parents[3] / "examples" / "dc_motor_speed_control.json"
 
