@@ -22,6 +22,8 @@ export default defineConfig({
     headless: true,
     viewport: { width: 1600, height: 950 },
     launchOptions: chromium ? { executablePath: chromium } : undefined,
+    // The opening sequence is covered by atmosphere.spec.ts; elsewhere it is switched off.
+    storageState: { cookies: [], origins: [{ origin: `http://127.0.0.1:${FRONTEND_PORT}`, localStorage: [{ name: "cl-intro", value: "off" }] }] },
   },
   webServer: [
     {

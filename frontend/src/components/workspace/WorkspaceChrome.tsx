@@ -1,7 +1,9 @@
-import { useEffect, useRef, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { DiagnosticsRunState } from "../DiagnosticsPanel";
 import { UiIcon } from "../UiIcon";
 import { ScrambleText } from "../../features/motion/ScrambleText";
+import { setMotionEnabled, useMotionEnabled } from "../../features/motion/useReducedMotion";
+import { introEnabled, setIntroEnabled } from "../intro/IntroSequence";
 
 export interface HierarchyCrumb {
   depth: number;
@@ -57,6 +59,8 @@ export function WorkspaceChrome({
   onClear,
 }: WorkspaceChromeProps) {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const motion = useMotionEnabled();
+  const [intro, setIntro] = useState(introEnabled);
   const commandMenuRef = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
@@ -151,6 +155,21 @@ export function WorkspaceChrome({
             <button type="button" onClick={() => closeMenuAnd(onOpenServerProjects)} data-testid="open-server-projects-button">Проекты на сервере</button>
             <button type="button" onClick={() => closeMenuAnd(() => importFileInputRef.current?.click())} data-testid="load-project-button">Импорт JSON</button>
             <button type="button" onClick={() => closeMenuAnd(onExportProject)} data-testid="save-project-button">Экспорт JSON</button>
+            <span className="hud-menu__separator" />
+            <button type="button" onClick={() => setMotionEnabled(!motion)} aria-pressed={motion} data-testid="motion-toggle">
+              Анимации: {motion ? "вкл" : "выкл"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIntroEnabled(!intro);
+                setIntro(!intro);
+              }}
+              aria-pressed={intro}
+              data-testid="intro-toggle"
+            >
+              Заставка при запуске: {intro ? "вкл" : "выкл"}
+            </button>
             <span className="hud-menu__separator" />
             <button
               type="button"

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Plot from "../Plot";
-import { axis, MARKER_COLOR, plotLayout, STATIC_PLOT_CONFIG } from "../plotTheme";
+import { axis, MARKER_COLOR, plotLayout, STATIC_PLOT_CONFIG, UNSTABLE_COLOR } from "../plotTheme";
 import { ApiError, errorText, sweepParameter, type SweepResponse } from "../../api/client";
 import { sliderRange, UNSLIDABLE_PARAMETERS } from "../../features/parameterRange";
 import type { Diagram } from "../../types/diagram";
@@ -132,7 +132,7 @@ export function PoleMap({ poles, diagram, focusBlockId }: PoleMapProps) {
           },
           {
             x: poles.map((pole) => pole.real), y: poles.map((pole) => pole.imag), type: "scatter", mode: "markers",
-            name: "полюса", marker: { size: 8, color: MARKER_COLOR, line: { width: 0 } },
+            name: "полюса", marker: { size: 8, color: poles.map((pole) => (pole.real > 1e-9 ? UNSTABLE_COLOR : MARKER_COLOR)), line: { width: 0 } },
             hovertemplate: "полюс %{x:.4g} %{y:+.4g}j<extra></extra>",
           },
         ]}
@@ -153,8 +153,8 @@ export function PoleMap({ poles, diagram, focusBlockId }: PoleMapProps) {
       />
       <p className="hud-note">
         {error || (active
-          ? `Красные точки — полюса текущей модели; светлые — путь полюсов при ${active.key} от ${Number(sliderRange(active.parameter, active.value).min.toPrecision(3))} до ${Number(sliderRange(active.parameter, active.value).max.toPrecision(3))}. Правая полуплоскость затенена.`
-          : "Красные точки — полюса текущей модели.")}
+          ? `Яркие точки — полюса текущей модели, красные — неустойчивые; мелкие — путь полюсов при ${active.key} от ${Number(sliderRange(active.parameter, active.value).min.toPrecision(3))} до ${Number(sliderRange(active.parameter, active.value).max.toPrecision(3))}. Правая полуплоскость затенена.`
+          : "Яркие точки — полюса текущей модели, красные — неустойчивые.")}
       </p>
     </div>
   );

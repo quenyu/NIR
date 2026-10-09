@@ -56,6 +56,7 @@ import { SimulationChart, type ScopeTab } from "../components/SimulationChart";
 import { ServerProjectsModal } from "../components/ServerProjectsModal";
 import { UiIcon } from "../components/UiIcon";
 import { ScrambleText } from "../features/motion/ScrambleText";
+import { emitRunWave } from "../components/space/SpaceBackdrop";
 import { WorkspaceInspector } from "../components/workspace/WorkspaceInspector";
 import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
 import { StatusBar } from "../components/workspace/StatusBar";
@@ -1189,6 +1190,8 @@ function ModelingWorkspace() {
   async function runSimulation() {
     cancelLiveRun();
     setIsLiveResult(false);
+    // The ripple starts from the signal source of the diagram, or from the run button.
+    emitRunWave(document.querySelector('[data-block-type="StepInput"]') ?? document.querySelector('[data-testid="simulate-button"]'));
     const serverLabel = "Сборка модели и расчёт";
     setScopeTab("plot");
     setIsLibraryCollapsed(true);

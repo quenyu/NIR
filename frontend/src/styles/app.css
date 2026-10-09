@@ -437,7 +437,7 @@
   border-right: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
   color: var(--text-soft);
-  background: #000;
+  background: var(--surface-solid);
   text-align: left;
   transition: background-color var(--motion-fast) ease;
 }
@@ -517,7 +517,7 @@
   height: 28px;
   border: 0;
   border-bottom: 1px solid var(--hairline);
-  background: #000;
+  background: var(--surface-solid);
   fill: var(--text-soft);
 }
 
@@ -532,7 +532,7 @@
 
 .react-flow__minimap {
   border: 1px solid var(--hairline-strong);
-  background: #000;
+  background: var(--surface-solid);
 }
 
 .react-flow__edge-path {
@@ -564,7 +564,7 @@
   min-height: 0;
   border: 1px solid var(--hairline-focus);
   border-radius: 0;
-  background: #000;
+  background: var(--surface-solid);
   transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 
@@ -590,7 +590,7 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius);
   color: var(--text);
-  background: #000;
+  background: var(--surface-solid);
   cursor: grab;
   transition: border-color var(--motion-normal) ease;
 }
@@ -628,7 +628,7 @@
 }
 
 .block-node[data-block-type="Subsystem"] {
-  box-shadow: 4px 4px 0 -1px #000, 4px 4px 0 0 var(--hairline-strong);
+  box-shadow: 4px 4px 0 -1px var(--surface-solid), 4px 4px 0 0 var(--hairline-strong);
 }
 
 .react-flow__node.has-diagnostic-error .block-node {
@@ -745,7 +745,7 @@
   padding: 0 12px;
   border: 1px solid var(--hairline-strong);
   color: var(--text-soft);
-  background: #000;
+  background: var(--surface-solid);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
   text-transform: uppercase;
@@ -849,11 +849,9 @@
   display: inline;
 }
 
-/* SMIL motion ignores CSS animation settings, so reduced motion hides the points. */
-@media (prefers-reduced-motion: reduce) {
-  .has-flow .signal-spark {
-    display: none;
-  }
+/* SMIL motion ignores CSS animation settings, so switched-off motion hides the points. */
+.motion-off .has-flow .signal-spark {
+  display: none;
 }
 
 /* Live parameter slider: a hairline track and a square thumb. */
@@ -884,7 +882,7 @@
   height: 9px;
   margin-top: -4px;
   border: 1px solid var(--text);
-  background: #000;
+  background: var(--surface-solid);
 }
 
 .hud-range::-moz-range-thumb {
@@ -892,7 +890,7 @@
   height: 9px;
   border: 1px solid var(--text);
   border-radius: 0;
-  background: #000;
+  background: var(--surface-solid);
 }
 
 .hud-range:hover::-webkit-slider-thumb,
@@ -1259,7 +1257,7 @@
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: var(--inspector-width);
   border-left: 1px solid var(--hairline);
-  background: #000;
+  background: var(--surface-solid);
   animation: hud-slide-in var(--motion-normal) var(--ease-out) both;
 }
 
@@ -1333,7 +1331,7 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius);
   color: var(--text);
-  background: #000;
+  background: var(--surface-solid);
   font-size: var(--type-value);
 }
 
@@ -1409,7 +1407,7 @@
 .hud-palette {
   width: min(620px, 100%);
   border: 1px solid var(--hairline-strong);
-  background: #000;
+  background: var(--surface-solid);
   animation: hud-rise var(--motion-normal) var(--ease-out) both;
 }
 
@@ -1625,7 +1623,7 @@
     z-index: 40;
     top: 0;
     bottom: 0;
-    background: #000;
+    background: var(--surface-solid);
   }
 
   .library-pane.is-open {
@@ -1679,5 +1677,290 @@
 
   .react-flow__minimap {
     display: none;
+  }
+}
+
+/* ======================================================================
+ * Deep space: backdrop, translucent panels, intro, model sphere
+ * ==================================================================== */
+
+.space-backdrop {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+  height: 100dvh;
+}
+
+.app-shell.is-hidden {
+  visibility: hidden;
+}
+
+.app-shell.is-revealed > .control-app > * {
+  animation: hud-reveal 0.9s var(--ease-out) both;
+}
+
+.app-shell.is-revealed > .control-app > :nth-child(2) { animation-delay: 0.1s; }
+.app-shell.is-revealed > .control-app > :nth-child(3) { animation-delay: 0.2s; }
+.app-shell.is-revealed > .control-app > :nth-child(4) { animation-delay: 0.3s; }
+
+@keyframes hud-reveal {
+  from { opacity: 0; transform: translateY(12px); }
+}
+
+.control-app {
+  background: transparent;
+}
+
+.hud-header,
+.hud-statusbar {
+  background: linear-gradient(rgba(1, 3, 10, 0.78), rgba(1, 3, 10, 0.55));
+}
+
+.library-pane,
+.hud-inspector,
+.scope-dock.is-open {
+  background: var(--surface);
+}
+
+.hud-run:hover:not(:disabled) {
+  box-shadow: 0 0 22px 0 var(--glow-soft);
+}
+
+.react-flow__node.selected .block-node {
+  box-shadow: 0 0 22px -6px var(--glow-soft);
+}
+
+.signal-spark {
+  fill: #d7e6ff;
+  filter: drop-shadow(0 0 3px var(--glow)) drop-shadow(0 0 6px var(--glow-soft));
+}
+
+.hud-range::-webkit-slider-runnable-track,
+.hud-range::-moz-range-track {
+  background: var(--hairline-strong);
+}
+
+.hud-range:hover::-webkit-slider-thumb,
+.hud-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 10px var(--glow);
+}
+
+/* ---- Intro ---------------------------------------------------------------- */
+
+.intro {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 22px 28px;
+  transition: opacity 0.9s var(--ease-out), transform 0.9s var(--ease-out);
+}
+
+.intro.is-leaving {
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.intro__cols {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  gap: 4px 28px;
+}
+
+.intro__stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+  gap: 28px;
+  min-height: 0;
+}
+
+.intro__sphere {
+  position: relative;
+  min-height: 0;
+}
+
+.intro__sphere canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.intro__motto {
+  position: absolute;
+  bottom: 4%;
+  left: 50%;
+  color: var(--text-soft);
+  font-size: var(--type-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.intro__boot {
+  align-self: center;
+  display: grid;
+  gap: 4px;
+  padding: 20px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.intro__boot-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.intro__boot-head .is-error {
+  color: var(--danger);
+}
+
+.intro__step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 0;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out);
+}
+
+.intro__step.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.intro__n {
+  color: rgba(180, 195, 230, 0.35);
+  font-size: var(--type-micro);
+}
+
+.intro__t {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.intro__t small {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+}
+
+.intro__p {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.intro__step.is-error .intro__p,
+.intro__step.is-error .intro__t small {
+  color: var(--danger);
+}
+
+.intro__bar,
+.intro__total {
+  position: relative;
+  height: 1px;
+  overflow: hidden;
+  background: var(--hairline);
+}
+
+.intro__bar {
+  grid-column: 2 / 4;
+}
+
+.intro__bar i,
+.intro__total i {
+  position: absolute;
+  inset: 0;
+  background: var(--glow);
+  box-shadow: 0 0 8px var(--glow);
+  transform-origin: left center;
+}
+
+.intro__step.is-error .intro__bar i {
+  background: var(--danger);
+  box-shadow: none;
+}
+
+.intro__bottom {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+}
+
+/* ---- Model sphere in the analysis tab -------------------------------------- */
+
+.pole-views {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.pole-sphere {
+  position: relative;
+  min-height: 320px;
+  border: 1px solid var(--hairline);
+  background: radial-gradient(circle at 50% 45%, rgba(40, 70, 150, 0.22), rgba(1, 3, 10, 0) 70%);
+}
+
+.pole-sphere canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pole-sphere__legend {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--text-soft);
+  font-size: var(--type-micro);
+}
+
+.pole-sphere__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #cfe0ff;
+  box-shadow: 0 0 6px var(--glow);
+  vertical-align: 1px;
+}
+
+.pole-sphere__dot.is-unstable {
+  background: var(--danger);
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .intro__stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(240px, 1fr) auto;
+  }
+
+  .intro__cols {
+    grid-template-columns: auto auto;
   }
 }

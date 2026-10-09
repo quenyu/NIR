@@ -92,6 +92,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
+/** Liveness of the modelling server. */
+export function checkHealth(signal?: AbortSignal): Promise<{ status: string }> {
+  return request("/health", { signal });
+}
+
 export function validateDiagram(diagram: Diagram): Promise<ValidateResponse> {
   return request("/validate", post({ diagram }));
 }

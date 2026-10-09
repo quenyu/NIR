@@ -6,6 +6,7 @@ import type { SimulationResponse, SystemAnalysis } from "../types/api";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
 import { PoleMap } from "./simulation/PoleMap";
+import { PoleSphere } from "./simulation/PoleSphere";
 import type { Diagram } from "../types/diagram";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { stabilityPresentation } from "../features/modelingWorkspace";
@@ -373,8 +374,11 @@ export function SimulationChart({
 
         {system && (
           <>
-            <h3>Полюса и годограф</h3>
-            <PoleMap poles={system.poles} diagram={diagram} focusBlockId={focusBlockId} />
+            <h3>Полюса: сфера модели и годограф</h3>
+            <div className="pole-views">
+              <PoleSphere poles={system.poles} />
+              <PoleMap poles={system.poles} diagram={diagram} focusBlockId={focusBlockId} />
+            </div>
           </>
         )}
 

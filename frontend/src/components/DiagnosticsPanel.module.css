@@ -3,7 +3,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   color: var(--text);
-  background: #000;
+  background: var(--surface-solid);
 }
 
 .collapsed {

@@ -291,7 +291,7 @@ textarea {
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius);
   color: var(--text);
-  background: #000;
+  background: var(--surface-solid);
   font-size: var(--type-ui);
   transition: border-color var(--motion-fast) ease;
 }
@@ -457,12 +457,11 @@ input[type="search"]::-webkit-search-cancel-button {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+/* "Анимации: выкл" in the app menu (see features/motion/useReducedMotion.ts). */
+.motion-off *,
+.motion-off *::before,
+.motion-off *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }

@@ -14,7 +14,9 @@ export function seriesColor(index: number, count: number): string {
   return count === 1 ? SINGLE_SERIES_COLOR : SERIES_COLORS[index % SERIES_COLORS.length];
 }
 
-export const MARKER_COLOR = "#ff3b30";
+/** Highlighted marks (cursor, current poles). Red is kept for instability only. */
+export const MARKER_COLOR = "#7fb2ff";
+export const UNSTABLE_COLOR = "#ff3b30";
 const TEXT = "#8a8a8a";
 const GRID = "rgba(255,255,255,0.08)";
 const AXIS = "rgba(255,255,255,0.28)";
@@ -38,8 +40,8 @@ export function axis(title: string, extra: Record<string, unknown> = {}): Record
 
 export function plotLayout(extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    paper_bgcolor: "#000000",
-    plot_bgcolor: "#000000",
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
     font: { color: TEXT, family: MONO, size: 12 },
     colorway: SERIES_COLORS,
     hovermode: "x unified",
