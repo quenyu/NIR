@@ -849,6 +849,13 @@
   display: inline;
 }
 
+/* SMIL motion ignores CSS animation settings, so reduced motion hides the points. */
+@media (prefers-reduced-motion: reduce) {
+  .has-flow .signal-spark {
+    display: none;
+  }
+}
+
 /* Live parameter slider: a hairline track and a square thumb. */
 .hud-range {
   appearance: none;

@@ -465,9 +465,4 @@ input[type="search"]::-webkit-search-cancel-button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-
-  /* SMIL motion ignores CSS animation settings. */
-  .has-flow .signal-spark {
-    display: none;
-  }
 }

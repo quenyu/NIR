@@ -28,10 +28,10 @@ flowchart LR
 | Редактор | `frontend/src/pages/MainPage.tsx`, `nodes/BlockNode.tsx`, `components/DiagramEdges.tsx` | блоки, связи, навигация по уровням, сохранение |
 | Подсказки редактора | `features/modelDiagnostics.ts`, `features/blockParameters.ts` | мгновенная проверка портов и параметров до отправки на сервер |
 | Результаты | `components/SimulationChart.tsx`, `components/simulation/StateSpacePanel.tsx` | графики, анализ, частоты, матрицы |
-| API | `backend/app/api/routes.py`, `api/errors.py` | 8 эндпоинтов, единый формат ошибок `{code, message, errors}` |
+| API | `backend/app/api/routes.py`, `api/errors.py` | 9 эндпоинтов, единый формат ошибок `{code, message, errors}` |
 | Модель | `simulation/model.py`, `validation/validator.py`, `simulation/hierarchy.py`, `simulation/assembly.py` | схема → проверенная плоская схема → `LinearModel` |
 | Расчёт | `simulation/solvers.py`, `simulation/service.py` | RK4, RK45, точное решение, сетка времени, разрывы |
-| Анализ | `analysis/stability.py`, `analysis/system.py`, `analysis/quality.py`, `analysis/frequency.py` | устойчивость, PBH, показатели качества, частотные характеристики |
+| Анализ | `analysis/stability.py`, `analysis/system.py`, `analysis/quality.py`, `analysis/frequency.py`, `analysis/sweep.py` | устойчивость, PBH, показатели качества, частотные характеристики, годограф |
 | Хранение | `storage/projects.py` | SQLite, версия схемы БД, оптимистическая блокировка |
 
 Сервер — единственный источник математической истины. Правила в редакторе (`blockParameters.ts`) зеркалят
@@ -192,6 +192,10 @@ C = S_y Y_x                D = S_y Y_r + S_r
   (полоса ±2 % от `|y∞ − y(t_ступ)|`) отсчитываются от момента ступеньки. Если `y∞` не существует,
   показатели не выдаются, а пользователь видит причину. То же происходит, если ступенька включается после окончания
   интервала моделирования.
+* **Годограф** (`analysis/sweep.py`, `POST /analyze/sweep`) — полюса `A` для каждого значения одного числового
+  параметра блока (до 200 значений). Модель собирается заново на каждом значении, поэтому годограф точен
+  для любого параметра: коэффициента петли, постоянной времени, затухания, коэффициентов PID. Если при
+  каком-то значении алгебраическая петля вырождается, это значение возвращается с причиной, а не с полюсами.
 * **Частотные характеристики** — ЛАЧХ, ЛФЧХ и АФЧХ для каждого канала «вход → выход». Запасы устойчивости
   не вычисляются: для замкнутого контура канал описывает замкнутую систему, а запасы требуют разомкнутой петли.
 
