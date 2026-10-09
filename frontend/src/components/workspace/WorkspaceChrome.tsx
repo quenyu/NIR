@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ChangeEvent } from "react";
 import type { DiagnosticsRunState } from "../DiagnosticsPanel";
 import { UiIcon } from "../UiIcon";
+import { ScrambleText } from "../../features/motion/ScrambleText";
 
 export interface HierarchyCrumb {
   depth: number;
@@ -91,7 +92,7 @@ export function WorkspaceChrome({
     <header className="hud-header">
       <div className="hud-header__left">
         <div className="hud-brand">
-          <span className="hud-key">Control Lab</span>
+          <ScrambleText className="hud-key" text="Control Lab" />
           <span className="hud-brand__project" title={projectTitle || "Проект не сохранён на сервере"}>
             {projectTitle || "Новая схема"}
           </span>
@@ -126,7 +127,7 @@ export function WorkspaceChrome({
       <div className="hud-header__right">
         <span className={`hud-status is-${diagnosticsState}`} role="status" aria-live="polite" data-testid="run-status">
           <span className="hud-status__dot" aria-hidden="true" />
-          {status}
+          <ScrambleText text={status} />
         </span>
         <button type="button" className="hud-link" onClick={onToggleLibrary} aria-pressed={isLibraryOpen} title="Библиотека блоков (B)">
           Блоки

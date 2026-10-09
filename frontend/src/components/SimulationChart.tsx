@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Plot from "./Plot";
 import { axis, PLOT_CONFIG, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, seriesColor } from "./plotTheme";
@@ -7,6 +7,9 @@ import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { stabilityPresentation } from "../features/modelingWorkspace";
+import { CountUp } from "../features/motion/CountUp";
+import { ScrambleText } from "../features/motion/ScrambleText";
+import { drawPlotLines } from "../features/motion/drawPlotLines";
 
 interface SimulationChartProps {
   result: SimulationResponse | null;
@@ -63,6 +66,15 @@ export function SimulationChart({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPrevious, setShowPrevious] = useState(true);
   const expandedDialogRef = useDialogFocus<HTMLElement>(isExpanded, () => setIsExpanded(false));
+  // The time plot draws its lines once per new result, not on resize or tab switches.
+  const drawnResultRef = useRef<SimulationResponse | null>(null);
+
+  function drawOnce(graph: HTMLElement) {
+    if (drawnResultRef.current === result) return;
+    drawnResultRef.current = result;
+    // Plotly redraws once more after mounting (resize handler); animate the settled paths.
+    window.setTimeout(() => drawPlotLines(graph), 60);
+  }
 
   useEffect(() => {
     if (activeTab === "plot" || activeTab === "frequency") {
@@ -139,6 +151,8 @@ export function SimulationChart({
           config={PLOT_CONFIG}
           style={{ width: "100%", height: "100%", minHeight: "180px" }}
           useResizeHandler
+          onInitialized={(_: unknown, graph: HTMLElement) => drawOnce(graph)}
+          onUpdate={(_: unknown, graph: HTMLElement) => drawOnce(graph)}
         />
         <footer className="scope-plot__footer">
           <span className="scope-plot__meta" title={`${result.time.length} точек`}>{solverLabel(result)}</span>
@@ -180,27 +194,27 @@ export function SimulationChart({
           <div className="system-analysis-grid">
             <article className={`system-analysis-card tone-${stability.tone}`} data-testid="system-stability">
               <span>Устойчивость</span>
-              <strong>{stability.label}</strong>
+              <strong><ScrambleText text={stability.label} /></strong>
               <small>{system.stability_reason}</small>
             </article>
             <article className="system-analysis-card">
               <span>Полюса</span>
-              <strong>{system.poles.length}</strong>
+              <strong><CountUp value={system.poles.length} format={(v) => String(Math.round(v ?? 0))} /></strong>
               <small>{system.poles.length > 0 ? system.poles.map(formatPole).join(", ") : "Статическая модель"}</small>
             </article>
             <article className="system-analysis-card">
               <span>Степень устойчивости</span>
-              <strong>{formatOptionalNumber(system.stability_degree)}</strong>
+              <strong><CountUp value={system.stability_degree} format={formatOptionalNumber} /></strong>
               <small>α = −max Re(λ)</small>
             </article>
             <article className="system-analysis-card">
               <span>Управляемость</span>
-              <strong>{system.controllability.rank} / {system.state_dimension}</strong>
+              <strong><CountUp value={system.controllability.rank} format={(v) => String(Math.round(v ?? 0))} /> / {system.state_dimension}</strong>
               <small>{propertySummary(system.controllability, "Полностью управляема")}</small>
             </article>
             <article className="system-analysis-card">
               <span>Наблюдаемость</span>
-              <strong>{system.observability.rank} / {system.state_dimension}</strong>
+              <strong><CountUp value={system.observability.rank} format={(v) => String(Math.round(v ?? 0))} /> / {system.state_dimension}</strong>
               <small>{propertySummary(system.observability, "Полностью наблюдаема")}</small>
             </article>
           </div>
@@ -381,7 +395,7 @@ export function SimulationChart({
           </div>
         </header>
 
-        <div className="scope-content" role="tabpanel">
+        <div className="scope-content" role="tabpanel" key={activeTab}>
           {activeTab === "plot" && renderPlotTab()}
           {activeTab === "analysis" && renderAnalysisTab()}
           {activeTab === "frequency" && renderFrequencyTab()}

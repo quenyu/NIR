@@ -1384,6 +1384,115 @@
 
 /* ---- Motion ------------------------------------------------------------------- */
 
+/* Header and status-line hairlines grow from the edge on load. */
+.hud-header,
+.hud-statusbar {
+  border-color: transparent;
+}
+
+.hud-header::after,
+.hud-statusbar::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--hairline);
+  transform-origin: left center;
+  animation: hud-grow 1.1s var(--ease-out) both;
+}
+
+.hud-header::after {
+  bottom: -1px;
+}
+
+.hud-statusbar::before {
+  top: -1px;
+  transform-origin: right center;
+  animation-delay: 0.2s;
+}
+
+/* Staggered entrance: anything with --i waits its turn. */
+.react-flow__node .block-node,
+.canvas-starter__grid button,
+.palette-item,
+.system-analysis-card,
+.hud-palette [cmdk-item],
+.hud-inspector__fields > * {
+  animation: hud-rise 0.6s var(--ease-out) both;
+}
+
+.react-flow__node .block-node {
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+.canvas-starter__grid button {
+  animation-delay: calc(0.25s + var(--i, 0) * 60ms);
+}
+
+.palette-group:nth-child(2) .palette-item { animation-delay: 0.08s; }
+.palette-group:nth-child(3) .palette-item { animation-delay: 0.16s; }
+.palette-group:nth-child(4) .palette-item { animation-delay: 0.24s; }
+.palette-group:nth-child(5) .palette-item { animation-delay: 0.32s; }
+
+.system-analysis-card:nth-child(2) { animation-delay: 0.06s; }
+.system-analysis-card:nth-child(3) { animation-delay: 0.12s; }
+.system-analysis-card:nth-child(4) { animation-delay: 0.18s; }
+.system-analysis-card:nth-child(5) { animation-delay: 0.24s; }
+
+.hud-palette [cmdk-item] {
+  animation-duration: 0.4s;
+  animation-delay: calc(var(--stagger, 0) * 25ms);
+}
+
+.hud-inspector__fields > :nth-child(2) { animation-delay: 0.05s; }
+.hud-inspector__fields > :nth-child(3) { animation-delay: 0.1s; }
+.hud-inspector__fields > :nth-child(4) { animation-delay: 0.15s; }
+.hud-inspector__fields > :nth-child(n + 5) { animation-delay: 0.2s; }
+
+.scope-content {
+  animation: hud-fade 0.4s ease both;
+}
+
+/* Entering a subsystem zooms in, leaving zooms out; two names restart the animation. */
+.level-in-0 .react-flow,
+.level-in-1 .react-flow {
+  animation: hud-level-in 0.45s var(--ease-out) both;
+}
+
+.level-in-1 .react-flow {
+  animation-name: hud-level-in-b;
+}
+
+.level-out-0 .react-flow,
+.level-out-1 .react-flow {
+  animation: hud-level-out 0.45s var(--ease-out) both;
+}
+
+.level-out-1 .react-flow {
+  animation-name: hud-level-out-b;
+}
+
+@keyframes hud-grow {
+  from { transform: scaleX(0); }
+}
+
+@keyframes hud-level-in {
+  from { opacity: 0; transform: scale(0.94); }
+}
+
+@keyframes hud-level-in-b {
+  from { opacity: 0; transform: scale(0.94); }
+}
+
+@keyframes hud-level-out {
+  from { opacity: 0; transform: scale(1.06); }
+}
+
+@keyframes hud-level-out-b {
+  from { opacity: 0; transform: scale(1.06); }
+}
+
 @keyframes hud-spin {
   to { transform: rotate(360deg); }
 }

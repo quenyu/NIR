@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { blockTypeLabel, normalizedSigns, type BlockNodeData } from "../../types/diagram";
 import { UiIcon } from "../UiIcon";
+import { ScrambleText } from "../../features/motion/ScrambleText";
 
 interface WorkspaceInspectorProps {
   node: BlockNodeData;
@@ -136,7 +137,7 @@ export function WorkspaceInspector({
       <header className="hud-inspector__header">
         <div>
           <span className="hud-key">{blockTypeLabel(node.blockType)}</span>
-          <strong title={title}>{title}</strong>
+          <strong title={title}><ScrambleText text={title} /></strong>
           {title !== node.blockId && <span className="hud-inspector__id">{node.blockId}</span>}
         </div>
         <button type="button" className="hud-icon-button" onClick={onClose} aria-label="Закрыть параметры" title="Закрыть (Esc)">

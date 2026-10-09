@@ -55,6 +55,7 @@ import {
 import { SimulationChart, type ScopeTab } from "../components/SimulationChart";
 import { ServerProjectsModal } from "../components/ServerProjectsModal";
 import { UiIcon } from "../components/UiIcon";
+import { ScrambleText } from "../features/motion/ScrambleText";
 import { WorkspaceInspector } from "../components/workspace/WorkspaceInspector";
 import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
 import { StatusBar } from "../components/workspace/StatusBar";
@@ -184,6 +185,8 @@ function ModelingWorkspace() {
   const [isDiagnosticsCollapsed, setIsDiagnosticsCollapsed] = useState(true);
   const [isArranging, setIsArranging] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
+  // Alternating class names restart the level transition on every enter / leave.
+  const [levelTransition, setLevelTransition] = useState<{ direction: "in" | "out"; count: number } | null>(null);
   const [scopeHeightPx, setScopeHeightPx] = useState(400);
   const [isScopeOpen, setIsScopeOpen] = useState(false);
   const [scopeTab, setScopeTab] = useState<ScopeTab>("plot");
@@ -335,10 +338,12 @@ function ModelingWorkspace() {
   }, [diagnosticsIssues, visibleNodeIds]);
 
   const renderedNodes = useMemo(
-    () => nodes.map((node) => {
+    () => nodes.map((node, index) => {
       const severity = diagnosticSeverityByNode.get(node.id);
       return {
         ...node,
+        // Staggered entrance of a freshly loaded level; CSS animates once per mounted node.
+        style: { ...node.style, ["--i" as string]: Math.min(index, 24) },
         className: [node.className, severity ? `has-diagnostic-${severity}` : undefined]
           .filter(Boolean)
           .join(" "),
@@ -725,6 +730,7 @@ function ModelingWorkspace() {
       return;
     }
     const positions = positionsFromSubsystemParameters(subsystemNode.data.parameters, nested);
+    setLevelTransition((current) => ({ direction: "in", count: (current?.count ?? 0) + 1 }));
     setHierarchyStack((current) => [
       ...current,
       {
@@ -767,6 +773,7 @@ function ModelingWorkspace() {
     }
 
     const parent = foldHierarchy(hierarchyStack, openLevel(), targetDepth);
+    setLevelTransition((current) => ({ direction: "out", count: (current?.count ?? 0) + 1 }));
 
     const selectedSubsystemId = hierarchyStack[targetDepth].subsystemId;
     setHierarchyStack((current) => current.slice(0, targetDepth));
@@ -1337,14 +1344,15 @@ function ModelingWorkspace() {
 
         <section className="modeling-main" ref={modelingMainRef} style={modelingMainStyle}>
           <section className="canvas-pane">
-            <div id="diagram-workbench" className="canvas-wrapper" onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
+            <div id="diagram-workbench" className={`canvas-wrapper ${levelTransition ? `level-${levelTransition.direction}-${levelTransition.count % 2}` : ""}`} onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
               {nodes.length === 0 && (
                 <div className="canvas-starter">
-                  <p className="canvas-starter__motto">[ Схема → модель ẋ = Ax + Br → результат ]</p>
+                  <p className="canvas-starter__motto"><ScrambleText text="[ Схема → модель ẋ = Ax + Br → результат ]" delay={150} /></p>
                   <div className="canvas-starter__grid">
-                    {STARTER_PRESETS.map((starter) => (
+                    {STARTER_PRESETS.map((starter, index) => (
                       <button
                         key={starter.id}
+                        style={{ ["--i" as string]: index }}
                         type="button"
                         onClick={() => applyPreset(starter.preset)}
                         data-testid={`starter-example-${starter.id}`}
@@ -1415,7 +1423,7 @@ function ModelingWorkspace() {
             </div>
             {notice && (
               <p className={`hud-toast is-${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} data-testid="canvas-notice">
-                <span>{notice.text}</span>
+                <ScrambleText text={notice.text} />
                 <button type="button" onClick={() => setNotice(null)} aria-label="Скрыть сообщение" title="Скрыть">
                   <UiIcon name="close" />
                 </button>
