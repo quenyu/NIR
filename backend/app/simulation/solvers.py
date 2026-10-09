@@ -32,6 +32,38 @@ def _validate_time_grid(t_eval: np.ndarray) -> None:
         raise ValueError("Сетка времени должна быть строго возрастающей.")
 
 
+def euler_integrate(
+    rhs: Rhs,
+    x0: np.ndarray,
+    t_grid: np.ndarray,
+    *,
+    breakpoints: Sequence[float] = (),
+) -> np.ndarray:
+    """Explicit Euler on the given grid: x_{k+1} = x_k + h·f(t_k, x_k).
+
+    First-order reference method for the numerical study; it is not offered by
+    the API. The derivative is taken at the left end of each step, so a jump at
+    a breakpoint grid node takes effect from the step that starts there.
+    """
+
+    _validate_time_grid(t_grid)
+    del breakpoints  # the left-point rule never evaluates past the step start
+    if x0.size == 0:
+        return np.zeros((0, t_grid.size))
+
+    trajectory = np.zeros((x0.size, t_grid.size))
+    trajectory[:, 0] = x0
+    x = x0.astype(float).copy()
+    for index in range(t_grid.size - 1):
+        left, right = float(t_grid[index]), float(t_grid[index + 1])
+        with np.errstate(over="ignore", invalid="ignore"):  # divergence is reported below
+            x = x + (right - left) * rhs(left, x)
+        if not np.all(np.isfinite(x)):
+            raise SolverError(f"Эйлер: состояние перестало быть конечным в момент t={right:g}.")
+        trajectory[:, index + 1] = x
+    return trajectory
+
+
 def rk4_integrate(
     rhs: Rhs,
     x0: np.ndarray,

@@ -4,7 +4,8 @@ Tolerances follow from each method:
 * exact (matrix exponential): only rounding, ~1e-12 relative to the signal;
 * solve_ivp RK45 with rtol=1e-8, atol=1e-10: local error control, the global
   error is bounded by a small multiple of rtol over these short horizons;
-* RK4 with fixed step h: global error O(h^4), checked through the observed order.
+* RK4 with fixed step h: global error O(h^4), checked through the observed order;
+* explicit Euler (study reference only): global error O(h).
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
 from app.simulation.model import compile_model
 from app.simulation.service import simulate_request
-from app.simulation.solvers import exact_lti_integrate, rk4_integrate, solve_ivp_integrate
+from app.simulation.solvers import SolverError, euler_integrate, exact_lti_integrate, rk4_integrate, solve_ivp_integrate
 from app.tests.structural_cases import (
     DiagramBuilder,
     biproper_loop_case,
@@ -83,6 +84,32 @@ def test_rk4_has_fourth_order_convergence() -> None:
 
     orders = np.log2(np.asarray(errors[:-1]) / np.asarray(errors[1:]))
     assert np.all((orders > 3.7) & (orders < 4.3)), orders
+
+
+def test_euler_has_first_order_convergence() -> None:
+    model = _model(pid_loop_case().diagram)
+    errors = []
+    for dt in (0.004, 0.002, 0.001):
+        grid = _grid(model, 4.0, dt)
+        exact = _outputs(model, grid, exact_lti_integrate(model.a, model.b, model.source_values, model.x0, grid))
+        euler = _outputs(model, grid, euler_integrate(model.rhs, model.x0, grid))
+        errors.append(float(np.max(np.abs(euler - exact))))
+
+    orders = np.log2(np.asarray(errors[:-1]) / np.asarray(errors[1:]))
+    assert np.all((orders > 0.9) & (orders < 1.1)), orders
+
+
+def test_euler_step_is_the_left_point_rule() -> None:
+    # x' = -x, x(0) = 1: one step of size h gives exactly 1 - h.
+    trajectory = euler_integrate(lambda _t, x: -x, np.array([1.0]), np.array([0.0, 0.25]))
+    assert trajectory[0, 1] == pytest.approx(0.75, abs=1e-15)
+
+
+def test_euler_beyond_its_stability_limit_is_reported() -> None:
+    # x' = -x with h = 3 > 2: |1 - h| = 2, the numerical solution doubles every step.
+    grid = np.arange(0.0, 3.0 * 1100, 3.0)
+    with pytest.raises(SolverError, match="Эйлер"):
+        euler_integrate(lambda _t, x: -x, np.array([1.0]), grid)
 
 
 def test_rk4_with_unaligned_step_keeps_its_accuracy() -> None:
