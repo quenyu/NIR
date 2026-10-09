@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Plot from "./Plot";
-import { axis, PLOT_CONFIG, plotLayout, SERIES_COLORS, STATIC_PLOT_CONFIG } from "./plotTheme";
+import { axis, PLOT_CONFIG, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, seriesColor } from "./plotTheme";
 import type { SimulationResponse, SystemAnalysis } from "../types/api";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
@@ -12,8 +12,7 @@ interface SimulationChartProps {
   result: SimulationResponse | null;
   /** The last successful run of the same diagram, drawn for comparison. */
   previousResult?: SimulationResponse | null;
-  collapsed?: boolean;
-  onToggleCollapsed?: () => void;
+  onClose?: () => void;
   requestedTab?: ScopeTab;
   onTabChange?: (tab: ScopeTab) => void;
 }
@@ -55,8 +54,7 @@ function solverLabel(result: SimulationResponse): string {
 export function SimulationChart({
   result,
   previousResult = null,
-  collapsed = false,
-  onToggleCollapsed,
+  onClose,
   requestedTab,
   onTabChange,
 }: SimulationChartProps) {
@@ -93,7 +91,7 @@ export function SimulationChart({
       mode: "lines",
       type: "scatter",
       name: label,
-      line: { color: SERIES_COLORS[index % SERIES_COLORS.length], width: 2 },
+      line: { color: seriesColor(index, labels.length), width: 1.5 },
     }));
     if (!comparable || !showPrevious || !previousResult) {
       return current;
@@ -106,8 +104,8 @@ export function SimulationChart({
         mode: "lines",
         type: "scatter",
         name: `${label} · предыдущий расчёт`,
-        line: { color: SERIES_COLORS[labels.indexOf(label) % SERIES_COLORS.length], width: 1.5, dash: "dot" },
-        opacity: 0.6,
+        line: { color: labels.length === 1 ? "#8a8a8a" : seriesColor(labels.indexOf(label), labels.length), width: 1, dash: "dot" },
+        opacity: 0.8,
       }));
     return [...previous, ...current];
   }, [result, previousResult, comparable, showPrevious]);
@@ -115,9 +113,6 @@ export function SimulationChart({
   function selectTab(tab: ScopeTab) {
     setActiveTab(tab);
     onTabChange?.(tab);
-    if (collapsed) {
-      onToggleCollapsed?.();
-    }
   }
 
   function timeLayout(extra: Record<string, unknown> = {}) {
@@ -146,11 +141,11 @@ export function SimulationChart({
           useResizeHandler
         />
         <footer className="scope-plot__footer">
-          <span>{solverLabel(result)} · {result.time.length} точек · n = {result.system_analysis?.state_dimension ?? 0}</span>
+          <span className="scope-plot__meta" title={`${result.time.length} точек`}>{solverLabel(result)}</span>
           {comparable && (
             <label className="scope-plot__compare">
               <input type="checkbox" checked={showPrevious} onChange={(event) => setShowPrevious(event.target.checked)} />
-              Показать предыдущий расчёт
+              Предыдущий расчёт
             </label>
           )}
           {result.warnings.map((warning) => (
@@ -295,7 +290,7 @@ export function SimulationChart({
           <article className="frequency-plot-card">
             <h3>ЛАЧХ</h3>
             <Plot
-              data={[{ x: omega, y: channel.magnitude_db, type: "scatter", mode: "lines", connectgaps: false, line: { color: SERIES_COLORS[0], width: 2 } }]}
+              data={[{ x: omega, y: channel.magnitude_db, type: "scatter", mode: "lines", connectgaps: false, line: { color: SINGLE_SERIES_COLOR, width: 1.5 } }]}
               layout={{
                 ...plotLayout({ hovermode: "closest", margin: { l: 56, r: 16, b: 44, t: 8 } }),
                 xaxis: axis("ω, рад/с", { type: "log" }),
@@ -310,7 +305,7 @@ export function SimulationChart({
           <article className="frequency-plot-card">
             <h3>ЛФЧХ</h3>
             <Plot
-              data={[{ x: omega, y: channel.phase_deg, type: "scatter", mode: "lines", connectgaps: false, line: { color: SERIES_COLORS[0], width: 2 } }]}
+              data={[{ x: omega, y: channel.phase_deg, type: "scatter", mode: "lines", connectgaps: false, line: { color: SINGLE_SERIES_COLOR, width: 1.5 } }]}
               layout={{
                 ...plotLayout({ hovermode: "closest", margin: { l: 56, r: 16, b: 44, t: 8 } }),
                 xaxis: axis("ω, рад/с", { type: "log" }),
@@ -325,7 +320,7 @@ export function SimulationChart({
           <article className="frequency-plot-card frequency-plot-card--nyquist">
             <h3>АФЧХ</h3>
             <Plot
-              data={[{ x: channel.real, y: channel.imag, type: "scatter", mode: "lines", connectgaps: false, line: { color: SERIES_COLORS[0], width: 2 } }]}
+              data={[{ x: channel.real, y: channel.imag, type: "scatter", mode: "lines", connectgaps: false, line: { color: SINGLE_SERIES_COLOR, width: 1.5 } }]}
               layout={{
                 ...plotLayout({ hovermode: "closest", margin: { l: 56, r: 16, b: 44, t: 8 } }),
                 xaxis: axis("Re W(jω)", { scaleanchor: "y", scaleratio: 1 }),
@@ -351,7 +346,6 @@ export function SimulationChart({
     <>
       <section className="panel chart-panel scope-panel">
         <header className="scope-panel__header">
-          <h2>Результаты</h2>
           <div className="scope-header-actions">
             <nav className="scope-tabs" role="tablist" aria-label="Представление результатов">
               {TABS.map((tab) => (
@@ -361,7 +355,7 @@ export function SimulationChart({
                   role="tab"
                   aria-selected={activeTab === tab.id}
                   data-testid={`scope-tab-${tab.id}`}
-                  className={`btn btn-tab ${activeTab === tab.id ? "active" : ""}`}
+                  className={`hud-tab ${activeTab === tab.id ? "is-active" : ""}`}
                   onClick={() => selectTab(tab.id)}
                 >
                   {tab.label}
@@ -372,24 +366,16 @@ export function SimulationChart({
             {activeTab === "plot" && result?.success && (
               <button
                 type="button"
-                className="btn btn-secondary btn-expand"
+                className="hud-link"
                 onClick={() => setIsExpanded(true)}
               >
-                <UiIcon name="expand" />
                 На весь экран
               </button>
             )}
 
-            {onToggleCollapsed && (
-              <button
-                type="button"
-                className={`btn btn-quiet scope-collapse-button ${collapsed ? "is-collapsed" : ""}`}
-                onClick={onToggleCollapsed}
-                aria-expanded={!collapsed}
-                title={collapsed ? "Развернуть результаты" : "Свернуть результаты"}
-              >
-                <UiIcon name="chevron" />
-                <span>{collapsed ? "Развернуть" : "Свернуть"}</span>
+            {onClose && (
+              <button type="button" className="hud-icon-button" onClick={onClose} aria-label="Свернуть результаты" title="Свернуть результаты">
+                <UiIcon name="close" />
               </button>
             )}
           </div>
@@ -421,13 +407,8 @@ export function SimulationChart({
               onClick={(event) => event.stopPropagation()}
             >
               <header className="scope-expand-modal__header">
-                <h3 id="scope-fullscreen-title">Осциллограф — полноэкранный режим</h3>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsExpanded(false)}
-                >
-                  <UiIcon name="close" />
+                <h3 id="scope-fullscreen-title">Графики</h3>
+                <button type="button" className="hud-link" onClick={() => setIsExpanded(false)}>
                   Закрыть
                 </button>
               </header>

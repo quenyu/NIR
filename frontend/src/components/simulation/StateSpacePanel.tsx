@@ -114,11 +114,6 @@ export function StateSpacePanel({ result }: { result: SimulationResponse | null 
           <span><UiIcon name="activity" /> Непрерывная LTI-модель</span>
           <strong>ẋ = Ax + Bu · y = Cx + Du</strong>
         </div>
-        <dl aria-label="Размерность модели">
-          <div><dt>Состояния</dt><dd>{system.state_dimension}</dd></div>
-          <div><dt>Входы</dt><dd>{system.input_dimension}</dd></div>
-          <div><dt>Выходы</dt><dd>{system.output_dimension}</dd></div>
-        </dl>
       </header>
       <section className="state-space-section matrix-section" aria-labelledby="matrix-section-title">
         <header className="state-space-section__header">

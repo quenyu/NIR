@@ -42,26 +42,22 @@ import {
   downloadDiagramProject,
   parseDiagramProjectJson,
 } from "../features/diagramPersistence";
-import { BlockPalette } from "../components/BlockPalette";
+import { BlockPalette, PALETTE_BLOCKS } from "../components/BlockPalette";
+import { CommandPalette, type PaletteAction } from "../components/CommandPalette";
 import {
   DiagnosticsPanel,
   type DiagnosticIssue as PanelDiagnosticIssue,
   type DiagnosticProgressItem,
   type DiagnosticProgressStatus,
-  type DiagnosticResult,
   type DiagnosticsRunState,
   type DiagnosticsTab,
 } from "../components/DiagnosticsPanel";
-import { ParameterEditor } from "../components/ParameterEditor";
 import { SimulationChart, type ScopeTab } from "../components/SimulationChart";
 import { ServerProjectsModal } from "../components/ServerProjectsModal";
 import { UiIcon } from "../components/UiIcon";
-import {
-  WorkspaceInspector,
-  type InspectorView,
-} from "../components/workspace/WorkspaceInspector";
+import { WorkspaceInspector } from "../components/workspace/WorkspaceInspector";
 import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
-import { WorkspaceRail } from "../components/workspace/WorkspaceRail";
+import { StatusBar } from "../components/workspace/StatusBar";
 import { FeedbackEdge, SignalEdge } from "../components/DiagramEdges";
 import { BlockNode } from "../nodes/BlockNode";
 import { layoutDiagram } from "../features/diagramLayout";
@@ -82,7 +78,6 @@ import {
   normalizeNodePositions,
   positionsFromNodes,
   positionsFromSubsystemParameters,
-  stabilityPresentation,
   toNode,
   type DiagramNode,
 } from "../features/modelingWorkspace";
@@ -172,13 +167,12 @@ function ModelingWorkspace() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [result, setResult] = useState<SimulationResponse | null>(null);
-  // Outcome of project operations (save, open, export), shown above the canvas.
+  // The one message channel: outcomes of project operations and editor hints.
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [previousResult, setPreviousResult] = useState<SimulationResponse | null>(null);
   // Last successful run of the current diagram; survives edits that clear `result`.
   const lastRunRef = useRef<SimulationResponse | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
-  const [info, setInfo] = useState<string>("");
   const [solver, setSolver] = useState<"rk4" | "solve_ivp">("solve_ivp");
   const [tEnd, setTEnd] = useState<number>(6);
   const [dt, setDt] = useState<number>(0.01);
@@ -189,12 +183,11 @@ function ModelingWorkspace() {
   const [diagnosticsProgress, setDiagnosticsProgress] = useState<DiagnosticProgressItem[]>([]);
   const [isDiagnosticsCollapsed, setIsDiagnosticsCollapsed] = useState(true);
   const [isArranging, setIsArranging] = useState(false);
-  const [isParameterModalOpen, setIsParameterModalOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [scopeHeightPx, setScopeHeightPx] = useState(400);
   const [isScopeOpen, setIsScopeOpen] = useState(false);
   const [scopeTab, setScopeTab] = useState<ScopeTab>("plot");
   const [isResizingScope, setIsResizingScope] = useState(false);
-  const [inspectorView, setInspectorView] = useState<InspectorView>("simulation");
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [nodeCounter, setNodeCounter] = useState(1);
@@ -237,19 +230,6 @@ function ModelingWorkspace() {
     ],
     [hierarchyStack],
   );
-
-  const hiddenHierarchyParts = useMemo(
-    () => (hierarchyPath.length > 4 ? hierarchyPath.slice(1, -2) : []),
-    [hierarchyPath],
-  );
-
-  const visibleHierarchyParts = useMemo(
-    () => (hierarchyPath.length > 4 ? [hierarchyPath[0], ...hierarchyPath.slice(-2)] : hierarchyPath),
-    [hierarchyPath],
-  );
-
-  const currentLevelTitle =
-    hierarchyStack[hierarchyStack.length - 1]?.subsystemLabel ?? "Главная схема";
 
   const selectedNodeTitle = selectedNode
     ? selectedNode.blockType === "Subsystem"
@@ -367,31 +347,8 @@ function ModelingWorkspace() {
     [diagnosticSeverityByNode, nodes],
   );
 
-  const diagnosticResults = useMemo<DiagnosticResult[]>(() => {
-    if (!result?.success) {
-      return [];
-    }
-    const stability = stabilityPresentation(result.system_analysis?.stability);
-    return [
-      { id: "signals", label: "Сигналы", value: Object.keys(result.outputs ?? {}).length },
-      { id: "points", label: "Точек расчёта", value: result.time?.length ?? 0 },
-      { id: "states", label: "Размерность x", value: result.system_analysis?.state_dimension ?? "—" },
-      { id: "stability", label: "Устойчивость", value: stability.label, tone: stability.tone },
-    ];
-  }, [result]);
-
   const effectiveDiagnosticsState: DiagnosticsRunState =
     diagnosticsState === "idle" && errors.length > 0 ? "error" : diagnosticsState;
-
-  const runButtonLabel = diagnosticsState === "validating"
-    ? "Проверяю схему"
-    : diagnosticsState === "running"
-      ? "Выполняется расчёт"
-      : diagnosticsState === "error"
-        ? "Проверить снова"
-        : result?.success
-          ? "Запустить снова"
-          : "Запустить модель";
 
   useEffect(() => {
     if (initialExampleLoadedRef.current || typeof window === "undefined") {
@@ -436,36 +393,6 @@ function ModelingWorkspace() {
       setScopeTab("plot");
     }
   }, [diagnosticsIssues.length, diagnosticsState, errors.length, modelRevisionKey, result]);
-
-  useEffect(() => {
-    function onKeydown(event: KeyboardEvent) {
-      if (event.key !== "Delete" || !selectedNodeId) {
-        return;
-      }
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
-      ) {
-        return;
-      }
-      setNodes((current) =>
-        current.filter((node) => node.id !== selectedNodeId),
-      );
-      setEdges((current) =>
-        current.filter(
-          (edge) =>
-            edge.source !== selectedNodeId && edge.target !== selectedNodeId,
-        ),
-      );
-      setSelectedNodeId(null);
-      setInspectorView("simulation");
-      setIsInspectorOpen(false);
-      setIsParameterModalOpen(false);
-    }
-    window.addEventListener("keydown", onKeydown);
-    return () => window.removeEventListener("keydown", onKeydown);
-  }, [selectedNodeId, setEdges, setNodes]);
 
   useEffect(() => {
     if (!isResizingScope) {
@@ -537,6 +464,10 @@ function ModelingWorkspace() {
     setIsResizingScope(true);
   }
 
+  function notify(text: string) {
+    setNotice({ tone: "info", text });
+  }
+
 
   function addBlock(type: BlockType, position?: { x: number; y: number }) {
     let counter = nodeCounter;
@@ -597,11 +528,10 @@ function ModelingWorkspace() {
     setEdges(edgesFromDiagram(preset.diagram, positions));
     setNodeCounter(loadedNodes.length + 1);
     setSelectedNodeId(null);
-    setInspectorView("simulation");
     setIsInspectorOpen(false);
     setIsLibraryCollapsed(true);
     setErrors([]);
-    setInfo(`Загружен пример: ${preset.title}`);
+    notify(`Загружен пример: ${preset.title}`);
     setResult(null);
     setIsScopeOpen(false);
     setScopeTab("plot");
@@ -631,7 +561,6 @@ function ModelingWorkspace() {
       setErrors([
         `Вход ${connection.target}.${targetHandle} уже имеет связь. Один вход может иметь только один источник.`,
       ]);
-      setInfo("");
       return;
     }
     const edge: Edge = {
@@ -649,7 +578,7 @@ function ModelingWorkspace() {
 
   async function arrangeCurrentDiagram() {
     if (nodes.length < 2) {
-      setInfo("Для упорядочивания добавьте минимум два блока.");
+      notify("Для упорядочивания добавьте минимум два блока.");
       return;
     }
 
@@ -663,7 +592,7 @@ function ModelingWorkspace() {
         position: positions[node.id] ?? node.position,
       })));
       setEdges((current) => routeDiagramEdges(current, positions));
-      setInfo("Схема упорядочена: основной сигнал слева направо, обратные связи — по нижним полосам.");
+      notify("Схема упорядочена: основной сигнал слева направо, обратные связи — по нижним полосам.");
       window.requestAnimationFrame(() => {
         nodes.forEach((node) => updateNodeInternals(node.id));
         window.requestAnimationFrame(() => {
@@ -723,7 +652,6 @@ function ModelingWorkspace() {
 
     if (node.data.blockType === "Sum" && blockedInputEdge?.targetHandle) {
       setErrors([blockedSumInputMessage(blockedInputEdge.targetHandle)]);
-      setInfo("");
       return;
     }
 
@@ -816,9 +744,7 @@ function ModelingWorkspace() {
     setEdges(edgesFromDiagram(nested, normalizedPositions));
     setNodeCounter(nextCounterForDiagram(nested));
     setSelectedNodeId(null);
-    setInspectorView("simulation");
     setIsInspectorOpen(false);
-    setIsParameterModalOpen(false);
     setResult(null);
     setIsScopeOpen(false);
     setDiagnosticsState("idle");
@@ -827,7 +753,7 @@ function ModelingWorkspace() {
     setDiagnosticsTab("issues");
     setIsDiagnosticsCollapsed(true);
     setErrors([]);
-    setInfo(`Открыта подсистема ${nodeId}.`);
+    notify(`Открыта подсистема ${nodeId}.`);
     window.setTimeout(() => void fitView({ padding: 0.1, duration: 250, maxZoom: 1 }), 0);
   }
 
@@ -848,12 +774,11 @@ function ModelingWorkspace() {
     setEdges(parent.edges);
     setNodeCounter(parent.nodeCounter);
     setSelectedNodeId(selectedSubsystemId);
-    setInspectorView("block");
     setIsInspectorOpen(true);
     setResult(null);
     setIsScopeOpen(false);
     setErrors([]);
-    setInfo(`Изменения уровня сохранены. Открыт уровень ${targetDepth}.`);
+    notify(`Изменения уровня сохранены. Открыт уровень ${targetDepth}.`);
     window.setTimeout(() => {
       void setViewport(parent.viewport, { duration: 180 });
       updateNodeInternals(selectedSubsystemId);
@@ -977,7 +902,6 @@ function ModelingWorkspace() {
     setPreviousResult(null);
     lastRunRef.current = null;
       setSelectedNodeId(null);
-      setInspectorView("simulation");
       setIsInspectorOpen(false);
       setResult(null);
       setIsScopeOpen(false);
@@ -1010,13 +934,11 @@ function ModelingWorkspace() {
     }
 
     if (file.size > MAX_PROJECT_FILE_SIZE_BYTES) {
-      setInfo("");
       setErrors(["Файл слишком большой. Максимальный размер проекта — 5 МБ."]);
       return;
     }
 
     setIsBusy(true);
-    setInfo("");
     setErrors([]);
     try {
       const parsed = parseDiagramProjectJson(await file.text());
@@ -1038,9 +960,7 @@ function ModelingWorkspace() {
       setTEnd(project.simulation.t_end);
       setDt(project.simulation.dt);
       setSelectedNodeId(null);
-      setInspectorView("simulation");
       setIsInspectorOpen(false);
-      setIsParameterModalOpen(false);
       setResult(null);
       setIsScopeOpen(false);
       setScopeTab("plot");
@@ -1054,7 +974,7 @@ function ModelingWorkspace() {
       setServerProjectVersion(null);
       setServerProjectTitle("");
       setErrors([]);
-      setInfo(
+      notify(
         warnings.length > 0
           ? `Проект «${project.metadata.title}» загружен. ${warnings.join(" ")}`
           : `Проект «${project.metadata.title}» загружен из ${file.name}.`,
@@ -1094,7 +1014,6 @@ function ModelingWorkspace() {
       return;
     }
     setSelectedNodeId(issue.blockId);
-    setInspectorView("block");
     setIsInspectorOpen(true);
     setIsLibraryCollapsed(true);
     setNodes((current) => current.map((candidate) => ({
@@ -1164,7 +1083,6 @@ function ModelingWorkspace() {
     const serverLabel = "Сборка модели на сервере";
     setIsLibraryCollapsed(true);
     setIsInspectorOpen(false);
-    setInfo("");
     setResult(null);
     setDiagnosticsState("validating");
     setDiagnosticsTab("progress");
@@ -1187,7 +1105,7 @@ function ModelingWorkspace() {
       setDiagnosticsState("success");
       setDiagnosticsTab("issues");
       showRunProgress(["done"], ["done", "Модель готова к расчёту"], serverLabel);
-      setInfo("Схема корректна: сервер собрал единую модель.");
+      notify("Схема корректна: сервер собрал единую модель.");
     } catch (error) {
       reportFailure(error, "validation-error");
       showRunProgress(["done"], ["error", "Сервер отклонил схему"], serverLabel);
@@ -1199,10 +1117,8 @@ function ModelingWorkspace() {
     setScopeTab("plot");
     setIsLibraryCollapsed(true);
     setIsInspectorOpen(false);
-    setInfo("");
     setErrors([]);
     setResult(null);
-    setInspectorView("simulation");
     openDiagnosticsDock();
     if (dt <= 0 || tEnd <= 0) {
       setDiagnosticsIssues([{
@@ -1239,7 +1155,7 @@ function ModelingWorkspace() {
       lastRunRef.current = response;
       setResult(response);
       setDiagnosticsState("success");
-      setDiagnosticsTab("results");
+      setDiagnosticsTab("progress");
       showRunProgress(["done"], ["done", `${response.time.length} точек`], serverLabel);
       setScopeHeightPx((current) => Math.max(current, 400));
       setIsDiagnosticsCollapsed(true);
@@ -1261,14 +1177,11 @@ function ModelingWorkspace() {
     setNodes([]);
     setEdges([]);
     setSelectedNodeId(null);
-    setInspectorView("simulation");
     setIsInspectorOpen(false);
     setResult(null);
     setIsScopeOpen(false);
     setScopeTab("plot");
     setErrors([]);
-    setInfo("");
-    setIsParameterModalOpen(false);
     setHierarchyStack([]);
     setPreviousResult(null);
     lastRunRef.current = null;
@@ -1289,201 +1202,145 @@ function ModelingWorkspace() {
       ),
     );
     setSelectedNodeId(null);
-    setInspectorView("simulation");
     setIsInspectorOpen(false);
-    setIsParameterModalOpen(false);
   }
 
+  function fitCanvas() {
+    void fitView({ padding: 0.08, duration: 280, maxZoom: 1 });
+  }
+
+  function toggleLibrary() {
+    setIsLibraryCollapsed((current) => !current);
+  }
+
+  function openExample(id: string) {
+    const preset = EXAMPLE_PRESETS.find((candidate) => candidate.id === id);
+    if (preset) applyPreset(preset);
+  }
+
+  const busyRun = isBusy || diagnosticsState === "validating" || diagnosticsState === "running";
+
+  const paletteActions: PaletteAction[] = [
+    { id: "run", title: "Запустить модель", shortcut: "Ctrl ↵", disabled: busyRun, run: () => void runSimulation() },
+    { id: "validate", title: "Проверить структуру", hint: "без расчёта", disabled: busyRun, run: () => void runValidation() },
+    { id: "library", title: isLibraryCollapsed ? "Показать библиотеку блоков" : "Скрыть библиотеку блоков", shortcut: "B", run: toggleLibrary },
+    { id: "arrange", title: "Разложить схему", hint: "автоматическое размещение", shortcut: "L", disabled: nodes.length < 2 || isArranging, run: () => void arrangeCurrentDiagram() },
+    { id: "fit", title: "Показать схему целиком", shortcut: "F", run: fitCanvas },
+    ...(hierarchyStack.length > 0
+      ? [{ id: "up", title: "На уровень выше", shortcut: "Esc", run: leaveSubsystem }]
+      : []),
+    { id: "save", title: "Сохранить на сервере", shortcut: "Ctrl S", run: () => void saveCurrentProjectOnServer() },
+    { id: "projects", title: "Проекты на сервере", run: () => setIsServerProjectsOpen(true) },
+    { id: "export", title: "Экспорт JSON", run: saveProjectToJson },
+  ];
+
+  // Global shortcuts read the latest handlers through a ref; the listener is registered once.
+  const shortcutsRef = useRef({
+    run: runSimulation,
+    save: saveCurrentProjectOnServer,
+    remove: deleteSelectedNode,
+    arrange: arrangeCurrentDiagram,
+    fit: fitCanvas,
+    library: toggleLibrary,
+    escape: () => {},
+    canRun: !busyRun,
+  });
+  shortcutsRef.current = {
+    run: runSimulation,
+    save: saveCurrentProjectOnServer,
+    remove: deleteSelectedNode,
+    arrange: arrangeCurrentDiagram,
+    fit: fitCanvas,
+    library: toggleLibrary,
+    escape: () => {
+      if (isInspectorOpen) setIsInspectorOpen(false);
+      else if (hierarchyStack.length > 0) leaveSubsystem();
+    },
+    canRun: !busyRun,
+  };
+
+  useEffect(() => {
+    function isTyping(target: EventTarget | null): boolean {
+      return target instanceof HTMLElement
+        && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    }
+    function onKeydown(event: KeyboardEvent) {
+      const shortcuts = shortcutsRef.current;
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === "k") {
+        event.preventDefault();
+        setIsCommandOpen((current) => !current);
+        return;
+      }
+      if (mod && key === "s") {
+        event.preventDefault();
+        void shortcuts.save();
+        return;
+      }
+      if (mod && event.key === "Enter") {
+        event.preventDefault();
+        if (shortcuts.canRun) void shortcuts.run();
+        return;
+      }
+      if (mod || event.altKey || isTyping(event.target) || document.querySelector("[aria-modal='true']")) return;
+      if (event.key === "Delete" || event.key === "Backspace") shortcuts.remove();
+      else if (event.key === "Escape") shortcuts.escape();
+      else if (key === "b" || key === "и") shortcuts.library();
+      else if (key === "l" || key === "д") void shortcuts.arrange();
+      else if (key === "f" || key === "а") shortcuts.fit();
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+  }, []);
+
+  const inspectorNode = isInspectorOpen ? selectedNode : null;
+  const modelDimensions = result?.success && result.system_analysis
+    ? {
+        n: result.system_analysis.state_dimension,
+        m: result.system_analysis.input_dimension,
+        p: result.system_analysis.output_dimension,
+      }
+    : null;
+
   return (
-    <main className={`control-app ${effectiveDiagnosticsState === "running" ? "is-running" : ""}`}>
+    <main className="control-app">
       <a className="skip-link" href="#diagram-workbench">К рабочей схеме</a>
       <WorkspaceChrome
         diagnosticsState={effectiveDiagnosticsState}
         simulationSucceeded={Boolean(result?.success)}
-        runDisabled={isBusy || diagnosticsState === "validating" || diagnosticsState === "running"}
-        runButtonLabel={runButtonLabel}
+        runDisabled={busyRun}
         onRun={runSimulation}
-        onSaveProject={saveProjectToJson}
+        onExportProject={saveProjectToJson}
         onImportProject={loadProjectFromJson}
-        isArranging={isArranging}
-        canArrange={nodes.length >= 2}
-        onArrange={() => void arrangeCurrentDiagram()}
         projectTitle={serverProjectTitle}
-        nodeCount={nodes.length}
-        edgeCount={edges.length}
+        hierarchy={hierarchyPath}
+        onLeaveToDepth={leaveSubsystemToDepth}
+        isLibraryOpen={!isLibraryCollapsed}
+        onToggleLibrary={toggleLibrary}
+        onOpenCommands={() => setIsCommandOpen(true)}
         serverProjectId={serverProjectId}
         serverProjectVersion={serverProjectVersion}
         onSaveServerProject={() => void saveCurrentProjectOnServer()}
         onOpenServerProjects={() => setIsServerProjectsOpen(true)}
         onClear={clearDiagram}
       />
-      <section className={`workspace ${isLibraryCollapsed ? "library-collapsed" : "library-open"} ${isInspectorOpen ? "inspector-open" : ""}`}>
-        <WorkspaceRail
-          diagnosticsState={effectiveDiagnosticsState}
-          simulationSucceeded={Boolean(result?.success)}
-          isLibraryOpen={!isLibraryCollapsed}
-          isInspectorOpen={isInspectorOpen}
-          isScopeOpen={isScopeOpen}
-          isArranging={isArranging}
-          canArrange={nodes.length >= 2}
-          onToggleLibrary={() => {
-            setIsLibraryCollapsed((current) => !current);
-            setIsInspectorOpen(false);
-          }}
-          onOpenInspector={() => {
-            setInspectorView("simulation");
-            setIsInspectorOpen(true);
-            setIsLibraryCollapsed(true);
-          }}
-          onToggleScope={() => {
-            if (isScopeOpen) {
-              setScopeTab("plot");
-            }
-            setIsScopeOpen((current) => !current);
-          }}
-          onArrange={() => void arrangeCurrentDiagram()}
-          onFit={() => void fitView({ padding: 0.08, duration: 280, maxZoom: 1 })}
-        />
-        {(!isLibraryCollapsed || isInspectorOpen) && (
-          <button
-            type="button"
-            className="workspace-panel-scrim"
-            aria-label="Закрыть боковую панель"
-            onClick={() => {
-              setIsLibraryCollapsed(true);
-              setIsInspectorOpen(false);
-            }}
-          />
-        )}
+      <section className={`workspace ${isLibraryCollapsed ? "library-collapsed" : "library-open"} ${inspectorNode ? "inspector-open" : ""}`}>
         <aside
           ref={libraryPaneRef}
           className={`library-pane ${isLibraryCollapsed ? "is-collapsed" : "is-open"}`}
           aria-hidden={isLibraryCollapsed}
           data-testid="block-library-pane"
         >
-          <button
-            type="button"
-            className="library-pane__toggle"
-            onClick={() => setIsLibraryCollapsed(true)}
-            aria-expanded={!isLibraryCollapsed}
-            title="Закрыть библиотеку"
-          >
-            <span>Библиотека блоков</span>
-            <UiIcon name="close" />
-          </button>
           <BlockPalette onAddBlock={addBlock} insideSubsystem={hierarchyStack.length > 0} />
-
-          <details className="panel panel--flush examples-panel">
-            <summary className="panel-heading">
-              <div>
-                <span className="panel-kicker">Быстрый старт</span>
-                <h2>Готовые схемы</h2>
-              </div>
-              <span className="examples-panel__count">{EXAMPLE_PRESETS.length}</span>
-              <UiIcon name="chevron" />
-            </summary>
-            <div className="example-list">
-              {EXAMPLE_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={(event) => {
-                    event.currentTarget.closest("details")?.removeAttribute("open");
-                    applyPreset(preset);
-                  }}
-                  data-testid={`load-example-${preset.id}`}
-                >
-                  <span>{preset.title}</span>
-                  <UiIcon name="chevron" />
-                </button>
-              ))}
-            </div>
-          </details>
         </aside>
 
         <section className="modeling-main" ref={modelingMainRef} style={modelingMainStyle}>
           <section className="canvas-pane">
-            <header className="canvas-caption">
-              <div className="canvas-caption__context">
-                <span className="canvas-caption__eyebrow">Структурная схема · уровень {hierarchyStack.length}</span>
-                <h1>{currentLevelTitle}</h1>
-                {hierarchyStack.length > 0 && <nav className="hierarchy-breadcrumb" aria-label="Уровень подсистемы">
-                  <button
-                    type="button"
-                    className={hierarchyStack.length === 0 ? "is-current" : ""}
-                    onClick={() => leaveSubsystemToDepth(0)}
-                    disabled={hierarchyStack.length === 0}
-                  >
-                    Главная схема
-                  </button>
-                  {hiddenHierarchyParts.length > 0 && (
-                    <details className="hierarchy-breadcrumb__collapsed">
-                      <summary title={`${hiddenHierarchyParts.length} скрытых уровня`}>
-                        … {hiddenHierarchyParts.length}
-                      </summary>
-                      <div>
-                        {hiddenHierarchyParts.map((part) => (
-                          <button
-                            key={`${part.depth}-${part.label}`}
-                            type="button"
-                            onClick={(event) => {
-                              event.currentTarget.closest("details")?.removeAttribute("open");
-                              leaveSubsystemToDepth(part.depth);
-                            }}
-                          >
-                            <span>Уровень {part.depth}</span>
-                            {part.label}
-                          </button>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                  {visibleHierarchyParts.slice(1).map((part) => {
-                    const isCurrent = part.depth === hierarchyStack.length;
-                    return (
-                      <button
-                        key={`${part.depth}-${part.label}`}
-                        type="button"
-                        className={isCurrent ? "is-current" : ""}
-                        onClick={() => leaveSubsystemToDepth(part.depth)}
-                        disabled={isCurrent}
-                      >
-                        {part.label}
-                      </button>
-                    );
-                  })}
-                </nav>}
-              </div>
-              <div className="canvas-caption__actions">
-                {hierarchyStack.length > 0 && (
-                  <button type="button" className="btn btn-secondary" onClick={leaveSubsystem} data-testid="leave-subsystem-button">
-                    ← На уровень выше
-                  </button>
-                )}
-                <span className="canvas-caption__hint">Двойной клик — параметры · Delete — удалить</span>
-              </div>
-              {notice && (
-                <p className={`canvas-notice is-${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} data-testid="canvas-notice">
-                  <UiIcon name={notice.tone === "error" ? "info" : "check"} />
-                  <span>{notice.text}</span>
-                  <button type="button" onClick={() => setNotice(null)} aria-label="Скрыть сообщение" title="Скрыть">
-                    <UiIcon name="close" />
-                  </button>
-                </p>
-              )}
-            </header>
             <div id="diagram-workbench" className="canvas-wrapper" onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
               {nodes.length === 0 && (
-                <div className="canvas-empty-state canvas-starter">
-                  <header className="canvas-starter__intro">
-                    <div>
-                      <strong>Соберите первый контур</strong>
-                      <p>Выберите готовую топологию или перенесите блок из библиотеки.</p>
-                    </div>
-                  </header>
-                  <div className="canvas-starter__visual">
-                    <img src="/axiom-signal-flow.png" alt="" aria-hidden="true" />
-                  </div>
+                <div className="canvas-starter">
+                  <p className="canvas-starter__motto">[ Схема → модель ẋ = Ax + Br → результат ]</p>
                   <div className="canvas-starter__grid">
                     {STARTER_PRESETS.map((starter) => (
                       <button
@@ -1492,13 +1349,13 @@ function ModelingWorkspace() {
                         onClick={() => applyPreset(starter.preset)}
                         data-testid={`starter-example-${starter.id}`}
                       >
-                        <span>{starter.category}</span>
+                        <span className="hud-key">{starter.category}</span>
                         <strong>{starter.title}</strong>
                         <small>{starter.description}</small>
                       </button>
                     ))}
                   </div>
-                  <p className="canvas-starter__manual"><span>→</span> Перетащите любой блок на сетку — позиция привяжется к шагу 8 px</p>
+                  <p className="canvas-starter__manual">Перетащите блок из библиотеки или нажмите <kbd>Ctrl K</kbd></p>
                 </div>
               )}
               <ReactFlow
@@ -1508,8 +1365,7 @@ function ModelingWorkspace() {
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onSelectionChange={({ nodes: selected }) => {
-                  const nextSelectedId = selected[0]?.id ?? null;
-                  setSelectedNodeId(nextSelectedId);
+                  setSelectedNodeId(selected[0]?.id ?? null);
                 }}
                 onNodeDoubleClick={(_, node) => {
                   if (nodeClickTimerRef.current !== null) {
@@ -1517,24 +1373,20 @@ function ModelingWorkspace() {
                     nodeClickTimerRef.current = null;
                   }
                   setSelectedNodeId(node.id);
-                  setInspectorView("block");
-                  setIsInspectorOpen(true);
-                  setIsLibraryCollapsed(true);
                   if (node.data.blockType === "Subsystem") {
                     enterSubsystem(node.id);
-                    setIsInspectorOpen(false);
-                  } else {
-                    setIsParameterModalOpen(true);
-                    setIsInspectorOpen(false);
+                    return;
                   }
+                  setIsInspectorOpen(true);
+                  window.setTimeout(() => {
+                    document.querySelector<HTMLInputElement>(".hud-inspector input")?.focus();
+                  }, 0);
                 }}
                 onNodeClick={(_, node) => {
                   if (nodeClickTimerRef.current !== null) window.clearTimeout(nodeClickTimerRef.current);
                   nodeClickTimerRef.current = window.setTimeout(() => {
                     setSelectedNodeId(node.id);
-                    setInspectorView("block");
                     setIsInspectorOpen(true);
-                    setIsLibraryCollapsed(true);
                     nodeClickTimerRef.current = null;
                   }, 180);
                 }}
@@ -1544,9 +1396,9 @@ function ModelingWorkspace() {
                     nodeClickTimerRef.current = null;
                   }
                   setSelectedNodeId(null);
-                  setInspectorView("simulation");
                   setIsInspectorOpen(false);
                 }}
+                deleteKeyCode={null}
                 nodeTypes={NODE_TYPES}
                 edgeTypes={EDGE_TYPES}
                 defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
@@ -1556,11 +1408,19 @@ function ModelingWorkspace() {
                 minZoom={0.18}
                 maxZoom={1.35}
               >
-                {nodes.length > 8 && <MiniMap pannable zoomable maskColor="rgba(0, 0, 0, 0.92)" nodeColor="#8d8d8d" />}
-                <Controls />
-                <Background variant={BackgroundVariant.Lines} gap={30} size={0.55} color="#222222" />
+                {nodes.length > 8 && <MiniMap pannable zoomable maskColor="rgba(0, 0, 0, 0.9)" nodeColor="rgba(255, 255, 255, 0.35)" />}
+                <Controls showInteractive={false} />
+                <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255, 255, 255, 0.16)" />
               </ReactFlow>
             </div>
+            {notice && (
+              <p className={`hud-toast is-${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} data-testid="canvas-notice">
+                <span>{notice.text}</span>
+                <button type="button" onClick={() => setNotice(null)} aria-label="Скрыть сообщение" title="Скрыть">
+                  <UiIcon name="close" />
+                </button>
+              </p>
+            )}
           </section>
 
           {isScopeOpen && (
@@ -1569,13 +1429,12 @@ function ModelingWorkspace() {
             </div>
           )}
 
-          <section className={`scope-dock ${isScopeOpen ? "is-open" : "is-collapsed"} ${result?.success && isScopeOpen ? "has-result" : "has-diagnostics-only"}`}>
+          <section className={`scope-dock ${isScopeOpen ? "is-open" : "is-collapsed"}`}>
             {isScopeOpen && result?.success && (
               <SimulationChart
                 result={result}
                 previousResult={previousResult}
-                collapsed={false}
-                onToggleCollapsed={() => {
+                onClose={() => {
                   setIsScopeOpen(false);
                   setScopeTab("plot");
                 }}
@@ -1586,10 +1445,8 @@ function ModelingWorkspace() {
             {!result?.success && <DiagnosticsPanel
               className="run-diagnostics-panel"
               state={effectiveDiagnosticsState}
-              statusLabel={effectiveDiagnosticsState === "success" && !result?.success ? "Схема проверена" : undefined}
               issues={panelIssues}
               progress={diagnosticsProgress}
-              results={diagnosticResults}
               activeTab={diagnosticsTab}
               collapsed={!isScopeOpen || isDiagnosticsCollapsed}
               onTabChange={setDiagnosticsTab}
@@ -1604,39 +1461,47 @@ function ModelingWorkspace() {
               onIssueClick={focusDiagnosticIssue}
             />}
           </section>
+          {result?.success && !isScopeOpen && (
+            <button type="button" className="scope-reopen" onClick={() => setIsScopeOpen(true)} data-testid="scope-reopen-button">
+              Результаты ↑
+            </button>
+          )}
         </section>
 
-        {isInspectorOpen && <WorkspaceInspector
-          selectedNode={selectedNode}
-          selectedNodeId={selectedNodeId}
-          selectedNodeTitle={selectedNodeTitle}
-          currentLevelTitle={currentLevelTitle}
-          info={info}
-          view={inspectorView}
-          onViewChange={setInspectorView}
-          onClose={() => setIsInspectorOpen(false)}
-          solver={solver}
-          onSolverChange={setSolver}
-          tEnd={tEnd}
-          onTEndChange={setTEnd}
-          dt={dt}
-          onDtChange={setDt}
-          onValidate={runValidation}
-          onOpenParameters={() => setIsParameterModalOpen(true)}
-          onDeleteSelected={deleteSelectedNode}
-          onEnterSubsystem={enterSubsystem}
-          nodeCount={nodes.length}
-          edgeCount={edges.length}
-          hierarchyDepth={hierarchyStack.length}
-        />}
+        {inspectorNode && (
+          <WorkspaceInspector
+            node={inspectorNode}
+            title={selectedNodeTitle}
+            connectedInputPorts={selectedConnectedInputPorts}
+            onParametersApply={applySelectedParameters}
+            onDelete={deleteSelectedNode}
+            onEnterSubsystem={enterSubsystem}
+            onClose={() => setIsInspectorOpen(false)}
+          />
+        )}
       </section>
 
-      <ParameterEditor
-        open={isParameterModalOpen}
-        selectedNode={selectedNode}
-        connectedInputPorts={selectedConnectedInputPorts}
-        onClose={() => setIsParameterModalOpen(false)}
-        onParametersApply={applySelectedParameters}
+      <StatusBar
+        nodeCount={nodes.length}
+        edgeCount={edges.length}
+        depth={hierarchyStack.length}
+        dimensions={modelDimensions}
+        solver={solver}
+        onSolverChange={setSolver}
+        tEnd={tEnd}
+        onTEndChange={setTEnd}
+        dt={dt}
+        onDtChange={setDt}
+      />
+
+      <CommandPalette
+        open={isCommandOpen}
+        onClose={() => setIsCommandOpen(false)}
+        actions={paletteActions}
+        blockTypes={PALETTE_BLOCKS}
+        onAddBlock={(type) => addBlock(type)}
+        examples={EXAMPLE_PRESETS.map(({ id, title }) => ({ id, title }))}
+        onOpenExample={openExample}
       />
       <ServerProjectsModal
         open={isServerProjectsOpen}

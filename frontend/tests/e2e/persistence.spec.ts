@@ -61,9 +61,9 @@ test("imports a project and restores diagram and simulation settings", async ({ 
 
   await expect(page.getByTestId("diagram-stats")).toContainText("2 блока");
   await expect(page.getByTestId("diagram-stats")).toContainText("1 связь");
-  await page.getByRole("button", { name: "Расчёт", exact: true }).click();
+  await expect(page.getByTestId("canvas-notice")).toContainText("Тестовый проект");
+  await page.getByTestId("solver-settings-button").click();
   await expect(page.getByTestId("solver-select")).toHaveValue("rk4");
-  await expect(page.getByTestId("project-info")).toContainText("Тестовый проект");
 });
 
 test("exports a versioned project JSON", async ({ page }) => {

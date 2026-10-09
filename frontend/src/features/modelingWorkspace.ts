@@ -9,8 +9,8 @@ import type {
 
 export type DiagramNode = Node<BlockNodeData>;
 
-export const NODE_LAYOUT_WIDTH = 224;
-const NODE_LAYOUT_MIN_HEIGHT = 104;
+export const NODE_LAYOUT_WIDTH = 184;
+const NODE_LAYOUT_MIN_HEIGHT = 80;
 export const NODE_LAYOUT_GAP_X = 48;
 const NODE_LAYOUT_GAP_Y = 40;
 
@@ -18,7 +18,7 @@ export function nodeLayoutHeight(data: BlockNodeData): number {
   if (data.blockType !== "Sum") {
     return NODE_LAYOUT_MIN_HEIGHT;
   }
-  return Math.max(NODE_LAYOUT_MIN_HEIGHT, 40 + Math.max(data.inputPorts.length, 1) * 24 + 16);
+  return Math.max(NODE_LAYOUT_MIN_HEIGHT, 30 + Math.max(data.inputPorts.length, 1) * 22 + 12);
 }
 
 export function defaultPosition(index: number): { x: number; y: number } {

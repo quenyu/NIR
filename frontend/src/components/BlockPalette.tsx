@@ -45,6 +45,9 @@ const BLOCK_GROUPS: Array<{
   },
 ];
 
+/** Every block that can be added from the root level, in library order. */
+export const PALETTE_BLOCKS = BLOCK_GROUPS.flatMap((group) => group.items.map(({ type, symbol }) => ({ type, symbol })));
+
 export function BlockPalette({ onAddBlock, insideSubsystem = false }: BlockPaletteProps) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase("ru"));
@@ -87,7 +90,7 @@ export function BlockPalette({ onAddBlock, insideSubsystem = false }: BlockPalet
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск по имени или формуле"
+          placeholder="Поиск блока"
           autoComplete="off"
         />
         {query && (
@@ -96,7 +99,6 @@ export function BlockPalette({ onAddBlock, insideSubsystem = false }: BlockPalet
           </button>
         )}
       </label>
-      <p className="panel-hint">Перетащите блок на схему или добавьте нажатием.</p>
       <div className="palette-list">
         {visibleGroups.map((group) => (
           <section className="palette-group" key={group.title}>

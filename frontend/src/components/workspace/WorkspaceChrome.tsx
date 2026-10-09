@@ -1,22 +1,25 @@
 import { useEffect, useRef, type ChangeEvent } from "react";
 import type { DiagnosticsRunState } from "../DiagnosticsPanel";
-import { formatRussianCount } from "../../features/modelingWorkspace";
 import { UiIcon } from "../UiIcon";
+
+export interface HierarchyCrumb {
+  depth: number;
+  label: string;
+}
 
 interface WorkspaceChromeProps {
   diagnosticsState: DiagnosticsRunState;
   simulationSucceeded: boolean;
   runDisabled: boolean;
-  runButtonLabel: string;
   onRun: () => void;
-  onSaveProject: () => void;
+  onExportProject: () => void;
   onImportProject: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
-  isArranging: boolean;
-  canArrange: boolean;
-  onArrange: () => void;
   projectTitle: string;
-  nodeCount: number;
-  edgeCount: number;
+  hierarchy: HierarchyCrumb[];
+  onLeaveToDepth: (depth: number) => void;
+  isLibraryOpen: boolean;
+  onToggleLibrary: () => void;
+  onOpenCommands: () => void;
   serverProjectId: string | null;
   serverProjectVersion: number | null;
   onSaveServerProject: () => void;
@@ -24,28 +27,28 @@ interface WorkspaceChromeProps {
   onClear: () => void;
 }
 
-function statusLabel(state: DiagnosticsRunState, simulationSucceeded: boolean): string {
+/** The one place where the run state is named. */
+export function statusLabel(state: DiagnosticsRunState, simulationSucceeded: boolean): string {
   if (state === "validating") return "Проверка схемы";
-  if (state === "running") return "Идёт расчёт";
+  if (state === "running") return "Расчёт";
   if (state === "error") return "Нужно исправление";
-  if (state === "success") return simulationSucceeded ? "Расчёт завершён" : "Схема проверена";
-  return "Проект готов";
+  if (state === "success") return simulationSucceeded ? "Расчёт завершён" : "Схема корректна";
+  return "Готово к расчёту";
 }
 
 export function WorkspaceChrome({
   diagnosticsState,
   simulationSucceeded,
   runDisabled,
-  runButtonLabel,
   onRun,
-  onSaveProject,
+  onExportProject,
   onImportProject,
-  isArranging,
-  canArrange,
-  onArrange,
   projectTitle,
-  nodeCount,
-  edgeCount,
+  hierarchy,
+  onLeaveToDepth,
+  isLibraryOpen,
+  onToggleLibrary,
+  onOpenCommands,
   serverProjectId,
   serverProjectVersion,
   onSaveServerProject,
@@ -54,41 +57,24 @@ export function WorkspaceChrome({
 }: WorkspaceChromeProps) {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const commandMenuRef = useRef<HTMLDetailsElement | null>(null);
-  // The shortcut listener is registered once; it always calls the latest handler.
-  const saveRef = useRef(onSaveServerProject);
-  saveRef.current = onSaveServerProject;
 
   useEffect(() => {
     function closeCommandMenu() {
       commandMenuRef.current?.removeAttribute("open");
     }
-
     function onPointerDown(event: PointerEvent) {
       const menu = commandMenuRef.current;
       const target = event.target;
-      if (menu?.open && target instanceof window.Node && !menu.contains(target)) {
-        closeCommandMenu();
-      }
+      if (menu?.open && target instanceof window.Node && !menu.contains(target)) closeCommandMenu();
     }
-
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") closeCommandMenu();
     }
-
-    function onSaveShortcut(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        saveRef.current();
-      }
-    }
-
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onEscape);
-    window.addEventListener("keydown", onSaveShortcut);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onEscape);
-      window.removeEventListener("keydown", onSaveShortcut);
     };
   }, []);
 
@@ -97,65 +83,90 @@ export function WorkspaceChrome({
     action();
   }
 
+  const busy = diagnosticsState === "validating" || diagnosticsState === "running";
+  const depth = hierarchy.length - 1;
+  const status = statusLabel(diagnosticsState, simulationSucceeded);
+
   return (
-    <header className="app-header focus-header">
-      <div className="app-brand">
-        <span className="app-brand__mark" aria-hidden="true">△</span>
-        <div><strong>CONTROL LAB</strong><span>Моделирование САУ</span></div>
-      </div>
-
-      <div className="header-project" title={projectTitle || "Проект не сохранён на сервере"}>
-        <span>{projectTitle ? "Проект на сервере" : "Проект"}</span>
-        <strong>{projectTitle || "Новая схема"}</strong>
-        <small data-testid="diagram-stats">{formatRussianCount(nodeCount, "блок", "блока", "блоков")} · {formatRussianCount(edgeCount, "связь", "связи", "связей")}</small>
-      </div>
-
-      <div className="header-actions" aria-label="Команды проекта">
-        <input ref={importFileInputRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={(event) => void onImportProject(event)} data-testid="project-file-input" />
-        <div className="app-header__status" title={statusLabel(diagnosticsState, simulationSucceeded)} role="status" aria-live="polite">
-          <span className={`status-dot ${diagnosticsState === "error" ? "is-error" : diagnosticsState === "success" ? "is-ready" : ""}`} />
-          <span>{statusLabel(diagnosticsState, simulationSucceeded)}</span>
+    <header className="hud-header">
+      <div className="hud-header__left">
+        <div className="hud-brand">
+          <span className="hud-key">Control Lab</span>
+          <span className="hud-brand__project" title={projectTitle || "Проект не сохранён на сервере"}>
+            {projectTitle || "Новая схема"}
+          </span>
         </div>
+        {depth > 0 && (
+          <nav className="hud-crumbs" aria-label="Уровень подсистемы">
+            <button
+              type="button"
+              className="hud-crumbs__up"
+              onClick={() => onLeaveToDepth(depth - 1)}
+              data-testid="leave-subsystem-button"
+              aria-label="На уровень выше"
+              title="На уровень выше (Esc)"
+            >
+              ←
+            </button>
+            {hierarchy.map((part) => (
+              <button
+                key={`${part.depth}-${part.label}`}
+                type="button"
+                className={part.depth === depth ? "is-current" : ""}
+                onClick={() => onLeaveToDepth(part.depth)}
+                disabled={part.depth === depth}
+              >
+                {part.label}
+              </button>
+            ))}
+          </nav>
+        )}
+      </div>
 
+      <div className="hud-header__right">
+        <span className={`hud-status is-${diagnosticsState}`} role="status" aria-live="polite" data-testid="run-status">
+          <span className="hud-status__dot" aria-hidden="true" />
+          {status}
+        </span>
+        <button type="button" className="hud-link" onClick={onToggleLibrary} aria-pressed={isLibraryOpen} title="Библиотека блоков (B)">
+          Блоки
+        </button>
+        <button type="button" className="hud-link" onClick={onOpenCommands} title="Команды (Ctrl+K)" data-testid="open-commands-button">
+          Команды <kbd>Ctrl K</kbd>
+        </button>
         <button
           type="button"
-          className="header-save-button"
+          className="hud-link"
           onClick={onSaveServerProject}
           data-testid="save-server-project-button"
           title={serverProjectId ? `Сохранить на сервере (Ctrl+S) · версия ${serverProjectVersion}` : "Сохранить на сервере (Ctrl+S)"}
-          aria-label="Сохранить на сервере"
         >
-          <UiIcon name="save" />
+          Сохранить
         </button>
-
-        <button type="button" className="btn btn-primary btn-run" onClick={onRun} data-testid="simulate-button" disabled={runDisabled}>
-          <UiIcon name="play" /><span>{runButtonLabel}</span><span aria-hidden="true">→</span>
-        </button>
-
-        <details ref={commandMenuRef} className="command-menu">
+        <input ref={importFileInputRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={(event) => void onImportProject(event)} data-testid="project-file-input" />
+        <details ref={commandMenuRef} className="hud-menu">
           <summary aria-label="Дополнительные команды" title="Дополнительные команды"><UiIcon name="more" /></summary>
-          <div className="command-menu__popover">
-            <span className="command-menu__label">Файл и схема</span>
-            <button type="button" onClick={() => closeMenuAnd(() => importFileInputRef.current?.click())} data-testid="load-project-button">
-              <UiIcon name="folder" /><span><strong>Импорт JSON</strong><small>Открыть файл проекта</small></span>
-            </button>
-            <button type="button" onClick={() => closeMenuAnd(onSaveProject)} data-testid="save-project-button">
-              <UiIcon name="save" /><span><strong>Экспорт JSON</strong><small>Скачать файл проекта</small></span>
-            </button>
-            <button type="button" onClick={() => closeMenuAnd(onArrange)} disabled={isArranging || !canArrange} data-testid="arrange-diagram-button">
-              <UiIcon name="arrange" /><span><strong>{isArranging ? "Раскладка…" : "Разложить схему"}</strong><small>Автоматическое размещение блоков</small></span>
-            </button>
-            <span className="command-menu__separator" />
-            <span className="command-menu__label">Серверные проекты</span>
-            <button type="button" onClick={() => closeMenuAnd(onOpenServerProjects)} data-testid="open-server-projects-button">
-              <UiIcon name="archive" /><span><strong>Открыть проекты</strong><small>Список серверных версий</small></span>
-            </button>
-            <span className="command-menu__separator" />
-            <button type="button" className="is-danger" onClick={() => closeMenuAnd(onClear)} data-testid="clear-button">
-              <UiIcon name="trash" /><span><strong>Очистить поле</strong><small>Удалить все блоки и связи</small></span>
+          <div className="hud-menu__popover">
+            <button type="button" onClick={() => closeMenuAnd(onOpenServerProjects)} data-testid="open-server-projects-button">Проекты на сервере</button>
+            <button type="button" onClick={() => closeMenuAnd(() => importFileInputRef.current?.click())} data-testid="load-project-button">Импорт JSON</button>
+            <button type="button" onClick={() => closeMenuAnd(onExportProject)} data-testid="save-project-button">Экспорт JSON</button>
+            <span className="hud-menu__separator" />
+            <button
+              type="button"
+              className="is-danger"
+              onClick={() => closeMenuAnd(() => {
+                if (window.confirm("Удалить все блоки и связи?")) onClear();
+              })}
+              data-testid="clear-button"
+            >
+              Очистить поле
             </button>
           </div>
         </details>
+        <button type="button" className={`hud-run ${busy ? "is-busy" : ""}`} onClick={onRun} data-testid="simulate-button" disabled={runDisabled} title="Запустить (Ctrl+Enter)">
+          <span className="hud-orbit" aria-hidden="true"><span /></span>
+          {busy ? "Расчёт…" : "Запустить"}
+        </button>
       </div>
     </header>
   );

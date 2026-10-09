@@ -93,3 +93,36 @@ test("an RK4 step outside the method's stability region is refused with a sugges
   expect(body.code).toBe("solver_settings");
   await expect(page.getByTestId("diagnostics-panel")).toContainText("Уменьшите dt");
 });
+
+test("a parameter edited in the inspector changes the assembled model: K = 5 gives the pole 1 - K = -4", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("starter-example-unstablePlantFeedback").click();
+  await page.getByTestId("node-controller").click();
+  const field = page.getByTestId("param-controller-k");
+  await expect(field).toHaveValue("3");
+  await field.fill("5");
+  await field.press("Enter");
+  await expect(page.getByTestId("node-controller")).toContainText("K = 5");
+
+  const { body } = await simulate(page);
+  expect(body.system_analysis.poles[0].real).toBeCloseTo(-4, 9);
+  expect(body.quality_metrics.y.target_value).toBeCloseTo(1.25, 9);
+});
+
+test("the command palette adds a block and runs commands from the keyboard", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("starter-example-firstOrder").click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(3);
+
+  await page.keyboard.press("Control+k");
+  await expect(page.getByTestId("command-palette")).toBeVisible();
+  await page.getByTestId("command-input").fill("интегратор");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("command-palette")).toBeHidden();
+  await expect(page.locator('[data-block-type="Integrator"]')).toHaveCount(1);
+
+  await page.keyboard.press("Control+k");
+  await page.getByTestId("command-input").fill("колебательное звено");
+  await page.getByTestId("load-example-secondOrder").click();
+  await expect(page.locator('[data-block-type="SecondOrderOscillator"]')).toHaveCount(1);
+});

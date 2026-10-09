@@ -7,10 +7,10 @@ import {
   type BlockNodeData,
 } from "../types/diagram";
 
-const SUM_MIN_HEIGHT = 104;
-const SUM_HEADER_HEIGHT = 40;
-const SUM_ROW_HEIGHT = 24;
-const SUM_BOTTOM_PADDING = 16;
+const SUM_MIN_HEIGHT = 80;
+const SUM_HEADER_HEIGHT = 30;
+const SUM_ROW_HEIGHT = 22;
+const SUM_BOTTOM_PADDING = 12;
 
 function verticalOffset(index: number, count: number): string {
   const ratio = (index + 1) / (count + 1);
@@ -218,30 +218,6 @@ function blockDisplayName(data: BlockNodeData): string {
   return blockTypeLabel(data.blockType);
 }
 
-function blockTypeCode(data: BlockNodeData): string {
-  switch (data.blockType) {
-    case "StepInput":
-    case "SubsystemInput":
-      return "Источник";
-    case "Scope":
-    case "SubsystemOutput":
-      return "Приёмник";
-    case "Sum":
-    case "Gain":
-      return "Оператор";
-    case "Integrator":
-    case "FirstOrderLag":
-    case "SecondOrderOscillator":
-    case "TransferFunction":
-    case "ButterworthLPF":
-      return "Динамика";
-    case "PIDController":
-      return "Регулятор";
-    case "Subsystem":
-      return "Подсистема";
-  }
-}
-
 export function BlockNode({ data }: NodeProps<BlockNodeData>) {
   const isSubsystem = data.blockType === "Subsystem";
   const title = blockDisplayName(data);
@@ -282,22 +258,11 @@ export function BlockNode({ data }: NodeProps<BlockNodeData>) {
       ))}
 
       <div className={`block-node__body ${isSubsystem ? "block-node__body--subsystem" : ""}`}>
-        <div className="block-node__glyph" title={blockFormula(data)} aria-hidden="true">
-          <span>{blockGlyph(data)}</span>
+        <span className="block-node__glyph" title={blockFormula(data)} aria-hidden="true">{blockGlyph(data)}</span>
+        <span className="block-node__title" title={title}>{title}</span>
+        <div className={isSubsystem ? "block-node__summary subsystem-node__ports" : "block-node__summary"} title={blockFormula(data)}>
+          {blockSummary(data)}
         </div>
-        <div className="block-node__copy">
-          <div className="block-node__topline">
-            <span className="block-node__type-code">{blockTypeCode(data)}</span>
-            <span className="block-node__index">{data.blockId}</span>
-          </div>
-          <div className="block-node__title" title={title}>{title}</div>
-          <div className="block-node__meta">
-            <div className={isSubsystem ? "subsystem-node__ports" : "block-node__id"} title={blockFormula(data)}>
-              {blockSummary(data)}
-            </div>
-          </div>
-        </div>
-        <span className="block-node__cursor" aria-hidden="true">→</span>
       </div>
 
       {data.outputPorts.map((port, index) => (

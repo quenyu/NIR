@@ -1,9 +1,9 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { UiIcon } from "./UiIcon";
 import styles from "./DiagnosticsPanel.module.css";
 
-export type DiagnosticsTab = "issues" | "progress" | "results";
+export type DiagnosticsTab = "issues" | "progress";
 
 export type DiagnosticsRunState =
   | "idle"
@@ -32,21 +32,10 @@ export interface DiagnosticProgressItem {
   detail?: string;
 }
 
-export type DiagnosticResultTone = "default" | "success" | "warning" | "danger";
-
-export interface DiagnosticResult {
-  id: string;
-  label: string;
-  value: ReactNode;
-  detail?: string;
-  tone?: DiagnosticResultTone;
-}
-
 export interface DiagnosticsPanelProps {
   state: DiagnosticsRunState;
   issues?: readonly DiagnosticIssue[];
   progress?: readonly DiagnosticProgressItem[];
-  results?: readonly DiagnosticResult[];
   activeTab?: DiagnosticsTab;
   defaultActiveTab?: DiagnosticsTab;
   collapsed?: boolean;
@@ -69,7 +58,6 @@ const STATE_LABELS: Record<DiagnosticsRunState, string> = {
 const TAB_LABELS: Record<DiagnosticsTab, string> = {
   issues: "Проблемы",
   progress: "Ход расчёта",
-  results: "Результаты",
 };
 
 function mergeClassNames(...values: Array<string | undefined | false>) {
@@ -80,7 +68,6 @@ export function DiagnosticsPanel({
   state,
   issues = [],
   progress = [],
-  results = [],
   activeTab,
   defaultActiveTab = "issues",
   collapsed,
@@ -96,14 +83,6 @@ export function DiagnosticsPanel({
 
   const selectedTab = activeTab ?? internalTab;
   const isCollapsed = collapsed ?? internalCollapsed;
-
-  const counts = useMemo(
-    () => ({
-      errors: issues.filter((issue) => issue.severity === "error").length,
-      warnings: issues.filter((issue) => issue.severity === "warning").length,
-    }),
-    [issues],
-  );
 
   const selectTab = (tab: DiagnosticsTab) => {
     if (activeTab === undefined) {
@@ -148,7 +127,7 @@ export function DiagnosticsPanel({
           {(Object.keys(TAB_LABELS) as DiagnosticsTab[]).map((tab) => {
             const isSelected = selectedTab === tab;
             const badgeValue =
-              tab === "issues" ? issues.length : tab === "progress" ? progress.length : results.length;
+              tab === "issues" ? issues.length : progress.length;
 
             return (
               <button
@@ -165,19 +144,6 @@ export function DiagnosticsPanel({
             );
           })}
         </nav>
-
-        <div className={styles.summary} aria-label="Сводка диагностики">
-          <span className={mergeClassNames(styles.summaryItem, styles.errorCount)}>
-            <UiIcon name="error" />
-            <span>{counts.errors}</span>
-            <span className={styles.summaryText}>ош.</span>
-          </span>
-          <span className={mergeClassNames(styles.summaryItem, styles.warningCount)}>
-            <UiIcon name="warning" />
-            <span>{counts.warnings}</span>
-            <span className={styles.summaryText}>пред.</span>
-          </span>
-        </div>
 
         <button
           type="button"
@@ -196,7 +162,6 @@ export function DiagnosticsPanel({
             <IssuesView issues={issues} onIssueClick={onIssueClick} />
           )}
           {selectedTab === "progress" && <ProgressView items={progress} state={state} />}
-          {selectedTab === "results" && <ResultsView results={results} state={state} />}
         </div>
       )}
     </section>
@@ -290,36 +255,3 @@ function ProgressView({ items, state }: ProgressViewProps) {
   );
 }
 
-interface ResultsViewProps {
-  results: readonly DiagnosticResult[];
-  state: DiagnosticsRunState;
-}
-
-function ResultsView({ results, state }: ResultsViewProps) {
-  if (results.length === 0) {
-    return (
-      <div className={styles.emptyState}>
-        <span className={styles.emptyIcon}><UiIcon name="activity" /></span>
-        <div>
-          <strong>{state === "running" ? "Формируются результаты" : "Результатов пока нет"}</strong>
-          <span>Итоговые показатели появятся после успешного расчёта.</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <dl className={styles.resultGrid}>
-      {results.map((result) => (
-        <div
-          key={result.id}
-          className={mergeClassNames(styles.resultCard, styles[`tone-${result.tone ?? "default"}`])}
-        >
-          <dt>{result.label}</dt>
-          <dd>{result.value}</dd>
-          {result.detail && <span>{result.detail}</span>}
-        </div>
-      ))}
-    </dl>
-  );
-}
