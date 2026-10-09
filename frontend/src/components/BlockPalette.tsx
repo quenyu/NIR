@@ -80,13 +80,6 @@ export function BlockPalette({ onAddBlock, insideSubsystem = false }: BlockPalet
 
   return (
     <section className="panel panel--flush block-library">
-      <header className="panel-heading">
-        <div>
-          <span className="panel-kicker">Конструктор</span>
-          <h2>Библиотека блоков</h2>
-        </div>
-        <UiIcon name="blocks" />
-      </header>
       <label className="palette-search">
         <span className="visually-hidden">Поиск блока</span>
         <UiIcon name="search" />

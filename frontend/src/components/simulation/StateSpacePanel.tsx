@@ -120,9 +120,6 @@ export function StateSpacePanel({ result }: { result: SimulationResponse | null 
           <div><dt>Выходы</dt><dd>{system.output_dimension}</dd></div>
         </dl>
       </header>
-      <figure className="state-space-view__visual" aria-hidden="true">
-        <img src="/axiom-state-space.png" alt="" />
-      </figure>
       <section className="state-space-section matrix-section" aria-labelledby="matrix-section-title">
         <header className="state-space-section__header">
           <div>

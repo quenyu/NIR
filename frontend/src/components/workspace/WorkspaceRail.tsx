@@ -42,11 +42,6 @@ export function WorkspaceRail({
 
   return (
     <nav className="mission-rail" aria-label="Инструменты рабочего пространства">
-      <div className="mission-rail__mode" aria-hidden="true">
-        <span>SYS</span>
-        <strong>AX</strong>
-      </div>
-
       <div className="mission-rail__tools">
         <button
           type="button"
@@ -91,7 +86,6 @@ export function WorkspaceRail({
 
       <div className={`mission-rail__state is-${diagnosticsState}`} title={currentState}>
         <span />
-        <small>SYS</small>
       </div>
     </nav>
   );

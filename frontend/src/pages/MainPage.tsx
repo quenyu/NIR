@@ -171,6 +171,9 @@ function ModelingWorkspace() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [result, setResult] = useState<SimulationResponse | null>(null);
+  const [previousResult, setPreviousResult] = useState<SimulationResponse | null>(null);
+  // Last successful run of the current diagram; survives edits that clear `result`.
+  const lastRunRef = useRef<SimulationResponse | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [info, setInfo] = useState<string>("");
   const [solver, setSolver] = useState<"rk4" | "solve_ivp">("solve_ivp");
@@ -189,7 +192,7 @@ function ModelingWorkspace() {
   const [scopeTab, setScopeTab] = useState<ScopeTab>("plot");
   const [isResizingScope, setIsResizingScope] = useState(false);
   const [inspectorView, setInspectorView] = useState<InspectorView>("simulation");
-  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(true);
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [nodeCounter, setNodeCounter] = useState(1);
   const [hierarchyStack, setHierarchyStack] = useState<HierarchyFrame[]>([]);
@@ -594,6 +597,8 @@ function ModelingWorkspace() {
     setIsScopeOpen(false);
     setScopeTab("plot");
     setHierarchyStack([]);
+    setPreviousResult(null);
+    lastRunRef.current = null;
     setServerProjectId(null);
     setServerProjectVersion(null);
     setServerProjectTitle("");
@@ -962,6 +967,11 @@ function ModelingWorkspace() {
       setEdges(edgesFromDiagram(diagram, positions));
       setNodeCounter(nextCounterForDiagram(diagram));
       setHierarchyStack([]);
+      setPreviousResult(null);
+      lastRunRef.current = null;
+    lastRunRef.current = null;
+    setPreviousResult(null);
+    lastRunRef.current = null;
       setSelectedNodeId(null);
       setInspectorView("simulation");
       setIsInspectorOpen(false);
@@ -1031,6 +1041,11 @@ function ModelingWorkspace() {
       setIsScopeOpen(false);
       setScopeTab("plot");
       setHierarchyStack([]);
+      setPreviousResult(null);
+      lastRunRef.current = null;
+    lastRunRef.current = null;
+    setPreviousResult(null);
+    lastRunRef.current = null;
       setServerProjectId(null);
       setServerProjectVersion(null);
       setServerProjectTitle("");
@@ -1216,6 +1231,8 @@ function ModelingWorkspace() {
     setIsBusy(true);
     try {
       const response = await simulateDiagram({ diagram, t_start: 0, t_end: tEnd, dt, solver });
+      setPreviousResult(lastRunRef.current);
+      lastRunRef.current = response;
       setResult(response);
       setDiagnosticsState("success");
       setDiagnosticsTab("results");
@@ -1249,6 +1266,8 @@ function ModelingWorkspace() {
     setInfo("");
     setIsParameterModalOpen(false);
     setHierarchyStack([]);
+    setPreviousResult(null);
+    lastRunRef.current = null;
     setServerProjectId(null);
     setServerProjectVersion(null);
     setServerProjectTitle("");
@@ -1384,7 +1403,7 @@ function ModelingWorkspace() {
               <div className="canvas-caption__context">
                 <span className="canvas-caption__eyebrow">Структурная схема · уровень {hierarchyStack.length}</span>
                 <h1>{currentLevelTitle}</h1>
-                <nav className="hierarchy-breadcrumb" aria-label="Уровень подсистемы">
+                {hierarchyStack.length > 0 && <nav className="hierarchy-breadcrumb" aria-label="Уровень подсистемы">
                   <button
                     type="button"
                     className={hierarchyStack.length === 0 ? "is-current" : ""}
@@ -1429,7 +1448,7 @@ function ModelingWorkspace() {
                       </button>
                     );
                   })}
-                </nav>
+                </nav>}
               </div>
               <div className="canvas-caption__actions">
                 {hierarchyStack.length > 0 && (
@@ -1441,21 +1460,13 @@ function ModelingWorkspace() {
               </div>
             </header>
             <div id="diagram-workbench" className="canvas-wrapper" onDragOver={onDragOver} onDrop={onDrop} data-testid="diagram-canvas" tabIndex={-1}>
-              <div className="canvas-telemetry" aria-label="Состояние схемы">
-                <span><small>NODES</small><strong>{String(nodes.length).padStart(2, "0")}</strong></span>
-                <span><small>LINKS</small><strong>{String(edges.length).padStart(2, "0")}</strong></span>
-                <span><small>LEVEL</small><strong>{String(hierarchyStack.length).padStart(2, "0")}</strong></span>
-                <span><small>SOLVER</small><strong>{solver === "solve_ivp" ? "RK45" : "RK4"}</strong></span>
-              </div>
               {nodes.length === 0 && (
                 <div className="canvas-empty-state canvas-starter">
                   <header className="canvas-starter__intro">
                     <div>
-                      <span className="canvas-starter__prompt">~/diagram/new</span>
                       <strong>Соберите первый контур</strong>
                       <p>Выберите готовую топологию или перенесите блок из библиотеки.</p>
                     </div>
-                    <span className="canvas-starter__cursor" aria-hidden="true">_</span>
                   </header>
                   <div className="canvas-starter__visual">
                     <img src="/axiom-signal-flow.png" alt="" aria-hidden="true" />
@@ -1532,7 +1543,7 @@ function ModelingWorkspace() {
                 minZoom={0.18}
                 maxZoom={1.35}
               >
-                <MiniMap pannable zoomable maskColor="rgba(0, 0, 0, 0.92)" nodeColor="#8d8d8d" />
+                {nodes.length > 8 && <MiniMap pannable zoomable maskColor="rgba(0, 0, 0, 0.92)" nodeColor="#8d8d8d" />}
                 <Controls />
                 <Background variant={BackgroundVariant.Lines} gap={30} size={0.55} color="#222222" />
               </ReactFlow>
@@ -1549,6 +1560,7 @@ function ModelingWorkspace() {
             {isScopeOpen && result?.success && (
               <SimulationChart
                 result={result}
+                previousResult={previousResult}
                 collapsed={false}
                 onToggleCollapsed={() => {
                   setIsScopeOpen(false);

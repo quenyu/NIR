@@ -139,6 +139,65 @@ function blockGlyph(data: BlockNodeData): string {
   }
 }
 
+function formatNumber(raw: unknown, fallback: number): string {
+  const value = typeof raw === "number" ? raw : Number(raw ?? fallback);
+  if (!Number.isFinite(value)) return "?";
+  return Number.parseFloat(value.toPrecision(4)).toString().replace("-", "−");
+}
+
+/** Polynomial in s from coefficients, highest power first: [1, -1] -> "s − 1". */
+function polynomial(raw: unknown): string {
+  const coefficients = Array.isArray(raw) ? raw.map(Number) : [];
+  const degree = coefficients.length - 1;
+  const terms: string[] = [];
+  coefficients.forEach((coefficient, index) => {
+    if (!Number.isFinite(coefficient) || coefficient === 0) return;
+    const power = degree - index;
+    const magnitude = Math.abs(coefficient);
+    const variable = power === 0 ? "" : power === 1 ? "s" : `s${power === 2 ? "²" : power === 3 ? "³" : `^${power}`}`;
+    const factor = magnitude === 1 && power > 0 ? "" : formatNumber(magnitude, 0);
+    const sign = coefficient < 0 ? "−" : "+";
+    terms.push(terms.length === 0 ? `${coefficient < 0 ? "−" : ""}${factor}${variable}` : ` ${sign} ${factor}${variable}`);
+  });
+  return terms.join("") || "0";
+}
+
+function wrap(expression: string): string {
+  return /[ +−]/.test(expression.trim().replace(/^−/, "")) ? `(${expression})` : expression;
+}
+
+/** The block's defining parameters in one line, e.g. "K = 3" or "1/(s − 1)". */
+function blockSummary(data: BlockNodeData): string {
+  const p = data.parameters;
+  switch (data.blockType) {
+    case "StepInput":
+      return `A = ${formatNumber(p.amplitude, 1)} · t₀ = ${formatNumber(p.t0, 0)}`;
+    case "Gain":
+      return `K = ${formatNumber(p.k, 1)}`;
+    case "Sum":
+      return normalizedSigns(p.signs).join(" ").replace(/-/g, "−");
+    case "Integrator":
+      return `${formatNumber(p.k, 1)}/s`;
+    case "FirstOrderLag":
+      return `${formatNumber(p.k, 1)}/(${formatNumber(p.T, 1)}s + 1)`;
+    case "SecondOrderOscillator":
+      return `ω₀ = ${formatNumber(p.wn, 1)} · ζ = ${formatNumber(p.zeta, 0.2)}`;
+    case "TransferFunction":
+      return `${wrap(polynomial(p.numerator ?? [1]))}/${wrap(polynomial(p.denominator ?? [1, 1]))}`;
+    case "ButterworthLPF":
+      return `n = ${formatNumber(p.order, 2)} · ωc = ${formatNumber(p.cutoff_freq, 10)}`;
+    case "PIDController":
+      return `Kp ${formatNumber(p.kp, 1)} · Ki ${formatNumber(p.ki, 0)} · Kd ${formatNumber(p.kd, 0)}`;
+    case "Scope":
+      return typeof p.label === "string" && p.label.trim() ? p.label : data.blockId;
+    case "SubsystemInput":
+    case "SubsystemOutput":
+      return typeof p.port === "string" ? p.port : "";
+    case "Subsystem":
+      return subsystemMeta(data);
+  }
+}
+
 function subsystemMeta(data: BlockNodeData): string {
   const inputs = data.inputPorts.length;
   const outputs = data.outputPorts.length;
@@ -163,23 +222,23 @@ function blockTypeCode(data: BlockNodeData): string {
   switch (data.blockType) {
     case "StepInput":
     case "SubsystemInput":
-      return "SOURCE";
+      return "Источник";
     case "Scope":
     case "SubsystemOutput":
-      return "SINK";
+      return "Приёмник";
     case "Sum":
     case "Gain":
-      return "OPERATOR";
+      return "Оператор";
     case "Integrator":
     case "FirstOrderLag":
     case "SecondOrderOscillator":
     case "TransferFunction":
     case "ButterworthLPF":
-      return "DYNAMICS";
+      return "Динамика";
     case "PIDController":
-      return "CONTROL";
+      return "Регулятор";
     case "Subsystem":
-      return "SUBSYSTEM";
+      return "Подсистема";
   }
 }
 
@@ -233,8 +292,8 @@ export function BlockNode({ data }: NodeProps<BlockNodeData>) {
           </div>
           <div className="block-node__title" title={title}>{title}</div>
           <div className="block-node__meta">
-            <div className={isSubsystem ? "subsystem-node__ports" : "block-node__id"}>
-              {isSubsystem ? subsystemMeta(data) : blockFormula(data)}
+            <div className={isSubsystem ? "subsystem-node__ports" : "block-node__id"} title={blockFormula(data)}>
+              {blockSummary(data)}
             </div>
           </div>
         </div>

@@ -116,9 +116,6 @@ export function WorkspaceInspector({
                 {selectedNode.blockType === "Subsystem" && (
                   <>
                     <small>Внутренняя схема открывается на этом же холсте отдельным уровнем.</small>
-                    <figure className="selection-card__hierarchy-visual" aria-hidden="true">
-                      <img src="/axiom-hierarchy-flow.png" alt="" />
-                    </figure>
                   </>
                 )}
               </div>

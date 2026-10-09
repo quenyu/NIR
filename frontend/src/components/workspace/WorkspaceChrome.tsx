@@ -89,13 +89,12 @@ export function WorkspaceChrome({
     <header className="app-header focus-header">
       <div className="app-brand">
         <span className="app-brand__mark" aria-hidden="true">△</span>
-        <div><strong>CONTROL LAB</strong><span>DYNAMIC SYSTEMS</span></div>
+        <div><strong>CONTROL LAB</strong><span>Моделирование САУ</span></div>
       </div>
 
-
-      <div className="header-project" title={projectTitle || "Линейная непрерывная модель"}>
-        <span>~/models/current</span>
-        <strong>{projectTitle || "Линейная модель"}</strong>
+      <div className="header-project" title={projectTitle || "Проект не сохранён на сервере"}>
+        <span>{projectTitle ? "Проект на сервере" : "Проект"}</span>
+        <strong>{projectTitle || "Новая схема"}</strong>
         <small data-testid="diagram-stats">{formatRussianCount(nodeCount, "блок", "блока", "блоков")} · {formatRussianCount(edgeCount, "связь", "связи", "связей")}</small>
       </div>
 

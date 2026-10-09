@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Plot from "./Plot";
-import { PLOT_FONT_COLOR, PLOT_UI_FONT_FAMILY } from "./plotTypography";
+import { axis, PLOT_CONFIG, plotLayout, SERIES_COLORS, STATIC_PLOT_CONFIG } from "./plotTheme";
 import type { SimulationResponse, SystemAnalysis } from "../types/api";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
@@ -10,46 +10,32 @@ import { stabilityPresentation } from "../features/modelingWorkspace";
 
 interface SimulationChartProps {
   result: SimulationResponse | null;
+  /** The last successful run of the same diagram, drawn for comparison. */
+  previousResult?: SimulationResponse | null;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
   requestedTab?: ScopeTab;
   onTabChange?: (tab: ScopeTab) => void;
 }
 
-export type ScopeTab = "plot" | "signals" | "analysis" | "frequency" | "stateSpace" | "meta";
+export type ScopeTab = "plot" | "analysis" | "frequency" | "stateSpace";
 
-interface SignalStatsRow {
-  name: string;
-  min: number;
-  max: number;
-  final: number;
-}
-
-function formatNumber(value: number): string {
-  if (!Number.isFinite(value)) {
-    return "н/д";
-  }
-  return value.toFixed(4);
-}
-
-function computeSignalStats(result: SimulationResponse): SignalStatsRow[] {
-  return Object.entries(result.outputs).map(([name, values]) => {
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const final = values.length > 0 ? values[values.length - 1] : NaN;
-    return { name, min, max, final };
-  });
-}
+const TABS: Array<{ id: ScopeTab; label: string }> = [
+  { id: "plot", label: "Графики" },
+  { id: "analysis", label: "Анализ" },
+  { id: "frequency", label: "Частоты" },
+  { id: "stateSpace", label: "Матрицы" },
+];
 
 function formatOptionalNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "-";
+    return "—";
   }
-  return value.toFixed(4);
+  return Number.parseFloat(value.toPrecision(5)).toString();
 }
 
 function formatReference(value: number | string | null | undefined): string {
-  return typeof value === "number" ? formatOptionalNumber(value) : value || "-";
+  return typeof value === "number" ? formatOptionalNumber(value) : value || "—";
 }
 
 function formatPole(pole: { real: number; imag: number }): string {
@@ -58,19 +44,17 @@ function formatPole(pole: { real: number; imag: number }): string {
   if (Math.abs(pole.imag) < 1e-12) {
     return real;
   }
-  return `${real} ${pole.imag >= 0 ? "+" : "-"} ${imagAbs}i`;
+  return `${real} ${pole.imag >= 0 ? "+" : "−"} ${imagAbs}j`;
 }
 
-const frequencyPlotTheme = {
-  paper_bgcolor: "#000000",
-  plot_bgcolor: "#000000",
-  font: { color: PLOT_FONT_COLOR, family: PLOT_UI_FONT_FAMILY, size: 14 },
-  margin: { l: 58, r: 18, b: 48, t: 34 },
-  showlegend: false
-};
+function solverLabel(result: SimulationResponse): string {
+  const used = result.metadata.used_solver;
+  return used === "rk4" ? "RK4, постоянный шаг" : used === "static" ? "статическая модель" : "RK45 (solve_ivp)";
+}
 
 export function SimulationChart({
   result,
+  previousResult = null,
   collapsed = false,
   onToggleCollapsed,
   requestedTab,
@@ -79,12 +63,10 @@ export function SimulationChart({
   const [activeTab, setActiveTab] = useState<ScopeTab>(requestedTab ?? "plot");
   const [channelIndex, setChannelIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(true);
   const expandedDialogRef = useDialogFocus<HTMLElement>(isExpanded, () => setIsExpanded(false));
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
     if (activeTab === "plot" || activeTab === "frequency") {
       window.dispatchEvent(new Event("resize"));
     }
@@ -94,25 +76,41 @@ export function SimulationChart({
     if (requestedTab) setActiveTab(requestedTab);
   }, [requestedTab]);
 
+  const comparable = Boolean(
+    previousResult?.success
+    && result?.success
+    && Object.keys(previousResult.outputs).every((label) => label in result.outputs),
+  );
+
   const traces = useMemo(() => {
-    if (!result || !result.success) {
+    if (!result?.success) {
       return [];
     }
-    return Object.entries(result.outputs).map(([label, values]) => ({
+    const labels = Object.keys(result.outputs);
+    const current = labels.map((label, index) => ({
       x: result.time,
-      y: values,
+      y: result.outputs[label],
       mode: "lines",
       type: "scatter",
-      name: label
+      name: label,
+      line: { color: SERIES_COLORS[index % SERIES_COLORS.length], width: 2 },
     }));
-  }, [result]);
-
-  const signalStats = useMemo(() => {
-    if (!result || !result.success) {
-      return [];
+    if (!comparable || !showPrevious || !previousResult) {
+      return current;
     }
-    return computeSignalStats(result);
-  }, [result]);
+    const previous = labels
+      .filter((label) => label in previousResult.outputs)
+      .map((label) => ({
+        x: previousResult.time,
+        y: previousResult.outputs[label],
+        mode: "lines",
+        type: "scatter",
+        name: `${label} · предыдущий расчёт`,
+        line: { color: SERIES_COLORS[labels.indexOf(label) % SERIES_COLORS.length], width: 1.5, dash: "dot" },
+        opacity: 0.6,
+      }));
+    return [...previous, ...current];
+  }, [result, previousResult, comparable, showPrevious]);
 
   function selectTab(tab: ScopeTab) {
     setActiveTab(tab);
@@ -122,8 +120,19 @@ export function SimulationChart({
     }
   }
 
+  function timeLayout(extra: Record<string, unknown> = {}) {
+    return plotLayout({
+      showlegend: traces.length > 1,
+      legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", font: { size: 12 } },
+      margin: { l: 56, r: 16, b: 44, t: traces.length > 1 ? 32 : 12 },
+      xaxis: axis("t, с"),
+      yaxis: axis("y(t)"),
+      ...extra,
+    });
+  }
+
   function renderPlotTab() {
-    if (!result || !result.success) {
+    if (!result?.success) {
       return <p>Запустите моделирование, чтобы увидеть выходные сигналы.</p>;
     }
 
@@ -131,63 +140,25 @@ export function SimulationChart({
       <div className="scope-plot scope-plot--full" data-testid="plot-ready">
         <Plot
           data={traces}
-          layout={{
-            title: "Выходные сигналы",
-            paper_bgcolor: "#000000",
-            plot_bgcolor: "#000000",
-            font: { color: PLOT_FONT_COLOR, family: PLOT_UI_FONT_FAMILY, size: 15 },
-            colorway: ["#da5c2c", "#d9d9d9", "#b4b4b4", "#7e7e7e", "#505050"],
-            xaxis: {
-              title: "Время (с)",
-              gridcolor: "#202020",
-              zerolinecolor: "#505050",
-              automargin: true
-            },
-            yaxis: {
-              title: "Амплитуда",
-              gridcolor: "#202020",
-              zerolinecolor: "#505050",
-              automargin: true
-            },
-            legend: { orientation: "h", y: -0.2 },
-            margin: { l: 62, r: 20, b: 64, t: 44 }
-          }}
-          config={{ displayModeBar: true, responsive: true }}
+          layout={timeLayout()}
+          config={PLOT_CONFIG}
           style={{ width: "100%", height: "100%", minHeight: "180px" }}
           useResizeHandler
         />
-      </div>
-    );
-  }
-
-  function renderSignalsTab() {
-    if (!result || !result.success) {
-      return <p>Сигналы пока не рассчитаны.</p>;
-    }
-    return (
-      <div className="scope-signals-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Сигнал</th>
-              <th>Отсчётов</th>
-              <th>Мин</th>
-              <th>Макс</th>
-              <th>Финал</th>
-            </tr>
-          </thead>
-          <tbody>
-            {signalStats.map((row) => (
-              <tr key={row.name}>
-                <td>{row.name}</td>
-                <td>{result.outputs[row.name].length}</td>
-                <td>{formatNumber(row.min)}</td>
-                <td>{formatNumber(row.max)}</td>
-                <td>{formatNumber(row.final)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <footer className="scope-plot__footer">
+          <span>{solverLabel(result)} · {result.time.length} точек · n = {result.system_analysis?.state_dimension ?? 0}</span>
+          {comparable && (
+            <label className="scope-plot__compare">
+              <input type="checkbox" checked={showPrevious} onChange={(event) => setShowPrevious(event.target.checked)} />
+              Показать предыдущий расчёт
+            </label>
+          )}
+          {result.warnings.map((warning) => (
+            <span key={warning} className="scope-plot__warning" role="note">
+              <UiIcon name="info" /> {warning}
+            </span>
+          ))}
+        </footer>
       </div>
     );
   }
@@ -290,29 +261,6 @@ export function SimulationChart({
     );
   }
 
-  function renderMetaTab() {
-    if (!result || !result.success) {
-      return <p>Метаданные моделирования пока недоступны.</p>;
-    }
-    return (
-      <div className="scope-meta">
-        <table>
-          <tbody>
-            {Object.entries(result.metadata).map(([key, value]) => (
-              <tr key={key}>
-                <th>{key}</th>
-                <td>{String(value)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  function renderStateSpaceTab() {
-    return <StateSpacePanel result={result} />;
-  }
   function renderFrequencyTab() {
     const frequency = result?.frequency_analysis;
     if (!result?.success || !frequency?.available) {
@@ -347,13 +295,13 @@ export function SimulationChart({
           <article className="frequency-plot-card">
             <h3>ЛАЧХ</h3>
             <Plot
-              data={[{ x: omega, y: channel.magnitude_db, type: "scatter", mode: "lines", connectgaps: false, line: { color: "#e2e1dc", width: 2.2 } }]}
+              data={[{ x: omega, y: channel.magnitude_db, type: "scatter", mode: "lines", connectgaps: false, line: { color: SERIES_COLORS[0], width: 2 } }]}
               layout={{
-                ...frequencyPlotTheme,
-                xaxis: { type: "log", title: "ω, рад/с", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
-                yaxis: { title: "L(ω), дБ", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
+                ...plotLayout({ hovermode: "closest", margin: { l: 56, r: 16, b: 44, t: 8 } }),
+                xaxis: axis("ω, рад/с", { type: "log" }),
+                yaxis: axis("L(ω), дБ"),
               }}
-              config={{ displayModeBar: false, responsive: true }}
+              config={STATIC_PLOT_CONFIG}
               style={{ width: "100%", height: "250px" }}
               useResizeHandler
             />
@@ -362,13 +310,13 @@ export function SimulationChart({
           <article className="frequency-plot-card">
             <h3>ЛФЧХ</h3>
             <Plot
-              data={[{ x: omega, y: channel.phase_deg, type: "scatter", mode: "lines", connectgaps: false, line: { color: "#9da3aa", width: 2.2 } }]}
+              data={[{ x: omega, y: channel.phase_deg, type: "scatter", mode: "lines", connectgaps: false, line: { color: SERIES_COLORS[0], width: 2 } }]}
               layout={{
-                ...frequencyPlotTheme,
-                xaxis: { type: "log", title: "ω, рад/с", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
-                yaxis: { title: "φ(ω), °", gridcolor: "#292b2f", zerolinecolor: "#52555a" },
+                ...plotLayout({ hovermode: "closest", margin: { l: 56, r: 16, b: 44, t: 8 } }),
+                xaxis: axis("ω, рад/с", { type: "log" }),
+                yaxis: axis("φ(ω), °"),
               }}
-              config={{ displayModeBar: false, responsive: true }}
+              config={STATIC_PLOT_CONFIG}
               style={{ width: "100%", height: "250px" }}
               useResizeHandler
             />
@@ -377,13 +325,13 @@ export function SimulationChart({
           <article className="frequency-plot-card frequency-plot-card--nyquist">
             <h3>АФЧХ</h3>
             <Plot
-              data={[{ x: channel.real, y: channel.imag, type: "scatter", mode: "lines", connectgaps: false, line: { color: "#d5d5d0", width: 2.2 } }]}
+              data={[{ x: channel.real, y: channel.imag, type: "scatter", mode: "lines", connectgaps: false, line: { color: SERIES_COLORS[0], width: 2 } }]}
               layout={{
-                ...frequencyPlotTheme,
-                xaxis: { title: "Re W(jω)", gridcolor: "#292b2f", zerolinecolor: "#52555a", scaleanchor: "y", scaleratio: 1 },
-                yaxis: { title: "Im W(jω)", gridcolor: "#292b2f", zerolinecolor: "#52555a" }
+                ...plotLayout({ hovermode: "closest", margin: { l: 56, r: 16, b: 44, t: 8 } }),
+                xaxis: axis("Re W(jω)", { scaleanchor: "y", scaleratio: 1 }),
+                yaxis: axis("Im W(jω)")
               }}
-              config={{ displayModeBar: false, responsive: true }}
+              config={STATIC_PLOT_CONFIG}
               style={{ width: "100%", height: "300px" }}
               useResizeHandler
             />
@@ -395,57 +343,30 @@ export function SimulationChart({
     );
   }
 
+  function renderStateSpaceTab() {
+    return <StateSpacePanel result={result} />;
+  }
+
   return (
     <>
       <section className="panel chart-panel scope-panel">
         <header className="scope-panel__header">
-          <h2>Осциллограф</h2>
+          <h2>Результаты</h2>
           <div className="scope-header-actions">
-            <nav className="scope-tabs" aria-label="Представление результатов">
-              <button
-                type="button"
-                data-testid="scope-tab-plot"
-                className={`btn btn-tab ${activeTab === "plot" ? "active" : ""}`}
-                onClick={() => selectTab("plot")}
-              >
-                График
-              </button>
-              <button
-                type="button"
-                className={`btn btn-tab ${activeTab === "signals" ? "active" : ""}`}
-                onClick={() => selectTab("signals")}
-              >
-                Сигналы
-              </button>
-              <button
-                type="button"
-                className={`btn btn-tab ${activeTab === "analysis" ? "active" : ""}`}
-                onClick={() => selectTab("analysis")}
-              >
-                Анализ
-              </button>
-              <button
-                type="button"
-                className={`btn btn-tab ${activeTab === "frequency" ? "active" : ""}`}
-                onClick={() => selectTab("frequency")}
-              >
-                Частоты
-              </button>
-              <button
-                type="button"
-                data-testid="scope-tab-state-space"
-                className={`btn btn-tab ${activeTab === "stateSpace" ? "active" : ""}`}
-                onClick={() => selectTab("stateSpace")}
-              >
-                Матрицы
-              </button>
-              <button
-                type="button"
-                className={`btn btn-tab ${activeTab === "meta" ? "active" : ""}`}
-                onClick={() => selectTab("meta")}
-              >
-                Метаданные
-              </button>
+            <nav className="scope-tabs" role="tablist" aria-label="Представление результатов">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  data-testid={`scope-tab-${tab.id}`}
+                  className={`btn btn-tab ${activeTab === tab.id ? "active" : ""}`}
+                  onClick={() => selectTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </nav>
 
             {activeTab === "plot" && result?.success && (
@@ -476,11 +397,9 @@ export function SimulationChart({
 
         <div className="scope-content" role="tabpanel">
           {activeTab === "plot" && renderPlotTab()}
-          {activeTab === "signals" && renderSignalsTab()}
           {activeTab === "analysis" && renderAnalysisTab()}
           {activeTab === "frequency" && renderFrequencyTab()}
           {activeTab === "stateSpace" && renderStateSpaceTab()}
-          {activeTab === "meta" && renderMetaTab()}
         </div>
       </section>
 
@@ -515,28 +434,8 @@ export function SimulationChart({
               <div className="scope-expand-modal__content">
                 <Plot
                   data={traces}
-                  layout={{
-                    title: "Выходные сигналы",
-                    paper_bgcolor: "#000000",
-                    plot_bgcolor: "#000000",
-                    font: { color: PLOT_FONT_COLOR, family: PLOT_UI_FONT_FAMILY, size: 15 },
-                    colorway: ["#da5c2c", "#d9d9d9", "#b4b4b4", "#7e7e7e", "#505050"],
-                    xaxis: {
-                      title: "Время (с)",
-                      gridcolor: "#292b2f",
-                      zerolinecolor: "#52555a",
-                      automargin: true
-                    },
-                    yaxis: {
-                      title: "Амплитуда",
-                      gridcolor: "#292b2f",
-                      zerolinecolor: "#52555a",
-                      automargin: true
-                    },
-                    legend: { orientation: "h", y: -0.1 },
-                    margin: { l: 58, r: 28, b: 72, t: 52 }
-                  }}
-                  config={{ displayModeBar: true, responsive: true }}
+                  layout={timeLayout({ margin: { l: 64, r: 24, b: 56, t: 40 } })}
+                  config={PLOT_CONFIG}
                   style={{ width: "100%", height: "100%" }}
                   useResizeHandler
                 />

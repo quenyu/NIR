@@ -1,27 +1,26 @@
 :root {
   color-scheme: dark;
 
-  /* Axiom / terminal at midnight */
+  /* Neutral scale: black canvas, flat surfaces separated by 1px lines. */
   --color-void: #000000;
-  --color-carbon: #111111;
-  --color-graphite: #191919;
-  --color-iron: #202020;
-  --color-slate: #3a3a3a;
-  --color-pewter: #505050;
-  --color-steel: #606060;
-  --color-ash: #7e7e7e;
-  --color-fog: #b4b4b4;
-  --color-chalk: #d9d9d9;
-  --color-paper: #eeeeee;
-  --color-ember: #da5c2c;
+  --color-carbon: #0f1011;
+  --color-graphite: #17181a;
+  --color-iron: #222326;
+  --color-slate: #34363a;
+  --color-pewter: #4a4c51;
+  --color-steel: #63666c;
+  --color-ash: #8c8f95;   /* muted text: 6.4:1 on void, 5.6:1 on carbon */
+  --color-fog: #b7b9bd;   /* secondary text */
+  --color-chalk: #d8d9dc;
+  --color-paper: #ededee; /* primary text */
+  --color-ember: #da5c2c; /* the one accent: actions, selection, active signal */
 
-  /* Compatibility aliases used by the application components. */
   --bg: var(--color-void);
-  --bg-raised: #080808;
+  --bg-raised: #08090a;
   --surface: var(--color-carbon);
   --surface-soft: var(--color-graphite);
   --surface-strong: var(--color-iron);
-  --surface-high: #262626;
+  --surface-high: #2a2b2f;
   --canvas: var(--color-void);
   --text: var(--color-paper);
   --text-soft: var(--color-fog);
@@ -32,13 +31,38 @@
   --accent: var(--color-ember);
   --accent-strong: #ef7140;
   --accent-ink: #070707;
-  --accent-soft: rgba(218, 92, 44, 0.11);
-  --success: var(--color-chalk);
-  --success-soft: rgba(217, 217, 217, 0.07);
-  --warning: var(--color-fog);
-  --warning-soft: rgba(180, 180, 180, 0.08);
-  --danger: var(--color-fog);
-  --danger-soft: rgba(180, 180, 180, 0.07);
+  --accent-soft: rgba(218, 92, 44, 0.12);
+
+  /*
+   * Status colors are reserved for state (never for data series) and are
+   * always shown together with a label or icon.
+   */
+  --success: #0ca30c;
+  --success-soft: rgba(12, 163, 12, 0.14);
+  --warning: #fab219;
+  --warning-soft: rgba(250, 178, 25, 0.12);
+  --danger: #d03b3b;
+  --danger-soft: rgba(208, 59, 59, 0.15);
+  --serious: #ec835a;
+  --serious-soft: rgba(236, 131, 90, 0.13);
+  --info: var(--color-chalk);
+  --info-soft: rgba(216, 217, 220, 0.08);
+
+  /* Signal lines on the canvas. */
+  --edge-signal: #9a9ca1;
+  --edge-feedback: #9a9ca1;
+  --edge-selected: var(--color-ember);
+  --edge-invalid: var(--danger);
+
+  /* Data series, fixed order (validated for CVD on #000, all >= 3:1). */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
   --data-secondary: var(--color-chalk);
   --data-tertiary: var(--color-ash);
 
@@ -48,29 +72,30 @@
   --radius-panel: 2px;
   --radius-dialog: 2px;
 
-  --font-berkeley: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
-  --font-ui: var(--font-berkeley);
-  --font-display: var(--font-berkeley);
-  --font-mono: var(--font-berkeley);
+  /* Proportional face for the interface, monospace for numbers, ids and formulas. */
+  --font-ui: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  --font-display: var(--font-ui);
+  --font-berkeley: var(--font-ui);
 
-  --type-micro: 12px;
+  --type-micro: 11px;
   --type-caption: 12px;
   --type-small: 13px;
   --type-ui: 14px;
   --type-body: 14px;
-  --type-subtitle: 18px;
+  --type-subtitle: 17px;
   --type-heading: 20px;
   --type-metric: 20px;
   --type-title: 20px;
-  --type-display: 32px;
+  --type-display: 30px;
   --leading-tight: 1.3;
-  --leading-ui: 1.5;
-  --leading-body: 1.6;
+  --leading-ui: 1.45;
+  --leading-body: 1.55;
 
   --header-height: 56px;
   --rail-width: 56px;
-  --library-width: 344px;
-  --inspector-width: 408px;
+  --library-width: 320px;
+  --inspector-width: 380px;
   --motion-fast: 100ms;
   --motion-normal: 160ms;
 }
