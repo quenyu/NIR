@@ -50,7 +50,10 @@ from app.tests.structural_cases import (  # noqa: E402
 
 STUDY = REPO / "docs" / "study"
 FIGURES = REPO / "docs" / "figures"
-SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500"]  # проверенный порядок цветов
+# Чёрно-белая печать: серии различаются типом линии и маркером, а не цветом.
+INK = ["black", "black", "0.45", "0.45"]
+LINES = ["-", "--", "-.", ":"]
+MARKS = ["o", "s", "^", "D"]
 
 
 def write_csv(name: str, rows: list[dict]) -> None:
@@ -234,13 +237,13 @@ def plot_loop_conditioning(curve: list[tuple[float, float, float]]) -> None:
     figure, axis = plt.subplots(figsize=(7.5, 3.8))
     kappas = [c[0] for c in curve]
     amplification = [c[1] for c in curve]
-    axis.loglog(kappas, amplification, "o", color=SERIES[0], ms=8, label="усиление погрешности k (расчёт)")
+    axis.loglog(kappas, amplification, "o", color="black", mfc="white", ms=8, label="усиление погрешности k (расчёт)")
     ks = np.geomspace(3, 1e8, 50)
-    axis.loglog(ks, ks, color=SERIES[1], lw=2, label="верхняя оценка: κ")
-    axis.axvline(MAX_LOOP_CONDITION, color="#d62828", lw=1, ls="--", label="порог отказа κ = 1/√ε")
+    axis.loglog(ks, ks, color="black", lw=1.5, label="верхняя оценка: κ")
+    axis.axvline(MAX_LOOP_CONDITION, color="black", lw=1, ls="--", label="порог отказа κ = 1/√ε")
     axis.set_xlabel("обусловленность петли κ")
     axis.set_ylabel("усиление погрешности")
-    axis.grid(True, which="both", color="#e5e5e5", lw=0.6)
+    axis.grid(True, which="both", color="0.85", lw=0.6)
     axis.legend(frameon=False)
     figure.tight_layout()
     figure.savefig(FIGURES / "nir_assembly_loops.png", dpi=170)
@@ -250,12 +253,13 @@ def plot_loop_conditioning(curve: list[tuple[float, float, float]]) -> None:
 def plot_cost(rows: list[dict]) -> None:
     figure, axis = plt.subplots(figsize=(7.5, 3.8))
     orders = [row["порядок n"] for row in rows]
-    for color, title in zip(SERIES, ("без контуров", "контур у каждого звена"), strict=False):
-        axis.loglog(orders, [float(row[f"сборка, мс ({title})"]) for row in rows], "o-", color=color, lw=2,
+    for i, title in enumerate(("без контуров", "контур у каждого звена")):
+        axis.loglog(orders, [float(row[f"сборка, мс ({title})"]) for row in rows], color=INK[i], ls=LINES[i],
+                    marker=MARKS[i], mfc="white", lw=1.6,
                     label=title)
     axis.set_xlabel("порядок модели n")
     axis.set_ylabel("время сборки, мс")
-    axis.grid(True, which="both", color="#e5e5e5", lw=0.6)
+    axis.grid(True, which="both", color="0.85", lw=0.6)
     axis.legend(frameon=False)
     figure.tight_layout()
     figure.savefig(FIGURES / "nir_assembly_cost.png", dpi=170)

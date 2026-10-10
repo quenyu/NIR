@@ -44,7 +44,10 @@ from app.tests.structural_cases import DiagramBuilder, pid_loop_case  # noqa: E4
 
 STUDY = REPO / "docs" / "study"
 FIGURES = REPO / "docs" / "figures"
-SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500"]  # проверенный порядок цветов
+# Чёрно-белая печать: серии различаются типом линии и маркером, а не цветом.
+INK = ["black", "black", "0.45", "0.45"]
+LINES = ["-", "--", "-.", ":"]
+MARKS = ["o", "s", "^", "D"]
 STEPS = (0.2, 0.1, 0.05, 0.025, 0.0125)
 METHODS = {"Эйлер": euler_integrate, "RK4": rk4_integrate, "RK45": solve_ivp_integrate}
 
@@ -207,13 +210,14 @@ def cost() -> list[dict]:
 def plot_error_versus_step(curves: dict[str, dict[str, list[float]]]) -> None:
     figure, axes = plt.subplots(1, 3, figsize=(12, 3.8), sharey=True)
     for axis, (case, errors) in zip(axes, curves.items(), strict=True):
-        for color, (name, values) in zip(SERIES, errors.items(), strict=False):
-            axis.loglog(STEPS, values, "o-", color=color, lw=2, ms=6, label=name)
+        for i, (name, values) in enumerate(errors.items()):
+            axis.loglog(STEPS, values, color=INK[i], ls=LINES[i], marker=MARKS[i], mfc="white", lw=1.6, ms=6,
+                        label=name)
         axis.set_title(case, fontsize=11)
         axis.set_xticks(STEPS, [f"{h:g}".replace(".", ",") for h in STEPS])
         axis.minorticks_off()
         axis.set_xlabel("шаг h, с")
-        axis.grid(True, which="both", color="#e5e5e5", lw=0.6)
+        axis.grid(True, which="both", color="0.85", lw=0.6)
     axes[0].set_ylabel("макс. ошибка")
     axes[0].legend(frameon=False)
     figure.tight_layout()
@@ -226,14 +230,15 @@ def plot_euler_versus_rk4() -> None:
     fine = grid_of(8.0, 0.001)
     coarse = grid_of(8.0, 0.1)
     figure, axis = plt.subplots(figsize=(7.5, 3.8))
-    axis.plot(fine, exact(model, fine), color="#6b6b6b", lw=2.5, label="точное решение")
-    runs = (("o-", SERIES[0], "Эйлер", euler_integrate), ("s-", SERIES[1], "RK4", rk4_integrate))
-    for marker, color, name, method in runs:
+    axis.plot(fine, exact(model, fine), color="0.6", lw=3, label="точное решение")
+    runs = (("--", "o", "Эйлер", euler_integrate), ("-", "s", "RK4", rk4_integrate))
+    for line, marker, name, method in runs:
         y = simulate(model, method, coarse)
-        axis.plot(coarse, y, marker, color=color, lw=1.5, ms=3.5, label=f"{name}, h = 0,1")
+        axis.plot(coarse, y, color="black", ls=line, marker=marker, mfc="white", lw=1.2, ms=4,
+                  label=f"{name}, h = 0,1")
     axis.set_xlabel("время t, с")
     axis.set_ylabel("выход y(t)")
-    axis.grid(True, color="#e5e5e5", lw=0.6)
+    axis.grid(True, color="0.85", lw=0.6)
     axis.legend(frameon=False)
     figure.tight_layout()
     figure.savefig(FIGURES / "nir_euler_vs_rk4.png", dpi=170)
@@ -242,15 +247,16 @@ def plot_euler_versus_rk4() -> None:
 
 def plot_euler_stability(traces: dict[float, tuple[np.ndarray, np.ndarray]]) -> None:
     figure, axis = plt.subplots(figsize=(7.5, 3.8))
-    for color, h in zip(SERIES, (0.5, 1.5, 1.9, 2.1), strict=True):
+    for i, h in enumerate((0.5, 1.5, 1.9, 2.1)):
         grid, y = traces[h]
         mask = grid <= 20.0
-        axis.plot(grid[mask], y[mask], "o-", color=color, lw=1.5, ms=3.5, label=f"h = {h:g}·T")
-    axis.axhline(1.0, color="#6b6b6b", lw=1, ls="--")
+        axis.plot(grid[mask], y[mask], color=INK[i], ls=LINES[i], marker=MARKS[i], mfc="white", lw=1.4, ms=4,
+                  label=f"h = {h:g}·T".replace(".", ","))
+    axis.axhline(1.0, color="0.35", lw=1, ls="--")
     axis.set_ylim(-1.5, 3.5)
     axis.set_xlabel("время t, с")
     axis.set_ylabel("выход y(t)")
-    axis.grid(True, color="#e5e5e5", lw=0.6)
+    axis.grid(True, color="0.85", lw=0.6)
     axis.legend(frameon=False, ncol=2)
     figure.tight_layout()
     figure.savefig(FIGURES / "nir_euler_stability.png", dpi=170)

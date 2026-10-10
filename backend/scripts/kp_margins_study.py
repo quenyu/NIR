@@ -39,7 +39,10 @@ from app.tests.structural_cases import DiagramBuilder  # noqa: E402
 
 STUDY = REPO / "docs" / "study"
 FIGURES = REPO / "docs" / "figures"
-SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500"]  # проверенный порядок цветов
+# Чёрно-белая печать: серии различаются типом линии и маркером, а не цветом.
+INK = ["black", "black", "0.45", "0.45"]
+LINES = ["-", "--", "-.", ":"]
+MARKS = ["o", "s", "^", "D"]
 FEEDBACK = LoopCut(from_block="w", from_port="out", to_block="e", to_port="in2")
 
 
@@ -184,19 +187,19 @@ def plot_nyquist() -> None:
         r = run(loop_diagram(k, [1.0], [1.0, 3.0, 2.0, 0.0]))
         re, im = np.array(r.nyquist_real), np.array(r.nyquist_imag)
         keep = (np.abs(re) < 6) & (np.abs(im) < 6)
-        axis.plot(re[keep], im[keep], color=SERIES[0], lw=2, label="ω > 0")
-        axis.plot(re[keep], -im[keep], color=SERIES[0], lw=1, ls=":", label="ω < 0")
-        axis.plot([-1], [0], "x", color="#d62828", ms=10, mew=2, label="точка −1")
+        axis.plot(re[keep], im[keep], color="black", lw=1.8, label="ω > 0")
+        axis.plot(re[keep], -im[keep], color="black", lw=1, ls=":", label="ω < 0")
+        axis.plot([-1], [0], "x", color="black", ms=10, mew=2, label="точка −1")
         if r.gain_margin:
-            axis.plot([-1 / r.gain_margin], [0], "o", color=SERIES[1], ms=6, label="пересечение оси, −1/GM")
-        axis.axhline(0, color="#999", lw=0.8)
-        axis.axvline(0, color="#999", lw=0.8)
+            axis.plot([-1 / r.gain_margin], [0], "o", color="black", mfc="white", ms=7, label="пересечение оси, −1/GM")
+        axis.axhline(0, color="0.5", lw=0.8)
+        axis.axvline(0, color="0.5", lw=0.8)
         axis.set_xlim(-3, 1)
         axis.set_ylim(-2.5, 2.5)
         axis.set_title(title, fontsize=11)
         axis.set_xlabel("Re L(jω)")
         axis.set_ylabel("Im L(jω)")
-        axis.grid(True, color="#e5e5e5", lw=0.6)
+        axis.grid(True, color="0.85", lw=0.6)
         axis.legend(frameon=False, fontsize=9, loc="lower left")
     figure.tight_layout()
     figure.savefig(FIGURES / "kp_margins_nyquist.png", dpi=170)
@@ -207,25 +210,25 @@ def plot_bode() -> None:
     r = run(loop_diagram(2.0, [1.0], [1.0, 3.0, 2.0, 0.0]))
     w = np.array(r.frequency)
     figure, (top, bottom) = plt.subplots(2, 1, figsize=(8, 5.6), sharex=True)
-    top.semilogx(w, r.magnitude_db, color=SERIES[0], lw=2)
-    top.axhline(0, color="#999", lw=0.8, ls="--")
-    top.axvline(r.gain_crossover, color=SERIES[1], lw=1, ls=":")
+    top.semilogx(w, r.magnitude_db, color="black", lw=1.8)
+    top.axhline(0, color="0.5", lw=0.8, ls="--")
+    top.axvline(r.gain_crossover, color="0.4", lw=1, ls=":")
     gm_db = r.gain_margin_db
     top.annotate("", (r.phase_crossover, -gm_db), (r.phase_crossover, 0),
-                 arrowprops={"arrowstyle": "<->", "color": SERIES[2], "lw": 1.5})
-    top.text(r.phase_crossover * 1.3, -gm_db - 22, f"GM = {gm_db:.2f} дБ".replace(".", ","), color="#333")
+                 arrowprops={"arrowstyle": "<->", "color": "black", "lw": 1.3})
+    top.text(r.phase_crossover * 1.5, 12, f"GM = {gm_db:.2f} дБ".replace(".", ","), color="black")
     top.set_ylabel("L(ω), дБ")
-    top.grid(True, which="both", color="#e5e5e5", lw=0.6)
-    bottom.semilogx(w, r.phase_deg, color=SERIES[0], lw=2)
-    bottom.axhline(-180, color="#999", lw=0.8, ls="--")
-    bottom.axvline(r.phase_crossover, color=SERIES[2], lw=1, ls=":")
+    top.grid(True, which="both", color="0.85", lw=0.6)
+    bottom.semilogx(w, r.phase_deg, color="black", lw=1.8)
+    bottom.axhline(-180, color="0.5", lw=0.8, ls="--")
+    bottom.axvline(r.phase_crossover, color="0.4", lw=1, ls=":")
     phase_at_wc = -180 + r.phase_margin
     bottom.annotate("", (r.gain_crossover, phase_at_wc), (r.gain_crossover, -180),
-                    arrowprops={"arrowstyle": "<->", "color": SERIES[1], "lw": 1.5})
-    bottom.text(r.gain_crossover * 0.08, -170, f"PM = {r.phase_margin:.1f}°".replace(".", ","), color="#333")
+                    arrowprops={"arrowstyle": "<->", "color": "black", "lw": 1.3})
+    bottom.text(r.gain_crossover * 0.08, -170, f"PM = {r.phase_margin:.1f}°".replace(".", ","), color="black")
     bottom.set_ylabel("φ(ω), °")
     bottom.set_xlabel("ω, рад/с")
-    bottom.grid(True, which="both", color="#e5e5e5", lw=0.6)
+    bottom.grid(True, which="both", color="0.85", lw=0.6)
     figure.tight_layout()
     figure.savefig(FIGURES / "kp_margins_bode.png", dpi=170)
     plt.close(figure)
@@ -234,14 +237,14 @@ def plot_bode() -> None:
 def plot_gain_margin(rows: list[dict]) -> None:
     ks = np.linspace(0.4, 8.5, 200)
     figure, axis = plt.subplots(figsize=(7.5, 3.8))
-    axis.plot(ks, 6 / ks, color=SERIES[0], lw=2, label="формула GM = 6/K")
-    axis.plot([r["K"] for r in rows], [float(r["GM (программа)"]) for r in rows], "o", color=SERIES[1], ms=8,
+    axis.plot(ks, 6 / ks, color="black", lw=1.6, label="формула GM = 6/K")
+    axis.plot([r["K"] for r in rows], [float(r["GM (программа)"]) for r in rows], "o", color="black", mfc="white", ms=8,
               label="программа")
-    axis.axhline(1, color="#d62828", lw=1, ls="--", label="граница устойчивости, GM = 1")
+    axis.axhline(1, color="black", lw=1, ls="--", label="граница устойчивости, GM = 1")
     axis.set_xlabel("коэффициент усиления K")
     axis.set_ylabel("запас по амплитуде GM, раз")
     axis.set_ylim(0, 8)
-    axis.grid(True, color="#e5e5e5", lw=0.6)
+    axis.grid(True, color="0.85", lw=0.6)
     axis.legend(frameon=False)
     figure.tight_layout()
     figure.savefig(FIGURES / "kp_margins_gain.png", dpi=170)
