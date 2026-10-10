@@ -1,3 +1,16 @@
+"""Step-response quality indices.
+
+The steady-state value is not read from the last sample of a finite
+trajectory: it is the limit y_inf = (D - C A^-1 B) r of the model, which
+exists only for an asymptotically stable A (for a model without states it is
+simply D r). When it does not exist, overshoot, rise and settling times are
+undefined and are reported as null with a reason.
+
+Settling time uses the classical band: |y(t) - y_inf| <= 2 % of the step of
+the output |y_inf - y(t_step)| for all later samples, measured from the
+instant of the step.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -5,147 +18,125 @@ from typing import Any
 
 import numpy as np
 
+from app.simulation.assembly import LinearModel
 
-def _finite_or_none(value: float | None) -> float | None:
-    if value is None:
+SETTLING_BAND = 0.02
+
+
+def steady_state_outputs(model: LinearModel, stability: str) -> np.ndarray | None:
+    """y_inf for all Scope outputs with every step input switched on."""
+
+    r_inf = np.array([source.amplitude for source in model.sources], dtype=float)
+    if model.state_dimension == 0:
+        return model.d @ r_inf
+    if stability != "stable":
         return None
-    if not np.isfinite(value):
+    dc_gain = model.d - model.c @ np.linalg.solve(model.a, model.b)
+    return dc_gain @ r_inf
+
+
+def step_instant(model: LinearModel, t_start: float) -> float:
+    active = [s.t0 for s in model.sources if s.amplitude != 0.0]
+    return max(t_start, min(active)) if active else t_start
+
+
+def _crossing_time(time: np.ndarray, values: np.ndarray, threshold: float, rising: bool) -> float | None:
+    reached = values >= threshold if rising else values <= threshold
+    indices = np.flatnonzero(reached)
+    if indices.size == 0:
         return None
-    return float(value)
-
-
-def _empty_metrics(settling_band: float) -> dict[str, Any]:
-    return {
-        "final_value": None,
-        "max_value": None,
-        "overshoot_percent": None,
-        "settling_time": None,
-        "rise_time": None,
-        "steady_state_error": None,
-        "integral_absolute_error": None,
-        "integral_squared_error": None,
-        "settling_band_percent": settling_band * 100.0,
-        "reference": None,
-    }
-
-
-def _overshoot_percent(values: np.ndarray, final_value: float) -> float | None:
-    if abs(final_value) <= 1e-12:
-        return None
-    if final_value >= 0.0:
-        peak = float(np.max(values))
-        overshoot = max(0.0, (peak - final_value) / abs(final_value) * 100.0)
-    else:
-        peak = float(np.min(values))
-        overshoot = max(0.0, (final_value - peak) / abs(final_value) * 100.0)
-    return overshoot
-
-
-def _settling_time(
-    time: np.ndarray,
-    values: np.ndarray,
-    final_value: float,
-    band: float,
-) -> float | None:
-    tolerance = abs(final_value) * band
-    if tolerance <= 1e-12:
-        return None
-
-    outside = np.flatnonzero(np.abs(values - final_value) > tolerance)
-    if outside.size == 0:
+    index = int(indices[0])
+    if index == 0:
         return float(time[0])
-    last_outside = int(outside[-1])
-    if last_outside >= len(time) - 2:
-        return None
-    return float(time[last_outside + 1])
+    left, right = float(values[index - 1]), float(values[index])
+    if right == left:
+        return float(time[index])
+    ratio = (threshold - left) / (right - left)
+    return float(time[index - 1] + ratio * (time[index] - time[index - 1]))
 
 
-def _rise_time(time: np.ndarray, values: np.ndarray, final_value: float) -> float | None:
-    if abs(final_value) <= 1e-12:
-        return None
-
-    low = 0.1 * final_value
-    high = 0.9 * final_value
-    if final_value > 0.0:
-        low_crossings = np.flatnonzero(values >= low)
-        high_crossings = np.flatnonzero(values >= high)
-    else:
-        low_crossings = np.flatnonzero(values <= low)
-        high_crossings = np.flatnonzero(values <= high)
-
-    if low_crossings.size == 0 or high_crossings.size == 0:
-        return None
-    high_index = int(high_crossings[0])
-    low_candidates = low_crossings[low_crossings <= high_index]
-    if low_candidates.size == 0:
-        return None
-    return float(time[high_index] - time[int(low_candidates[0])])
-
-
-def _error_integrals(
+def _step_indices(
     time: np.ndarray,
     values: np.ndarray,
-    reference: float | np.ndarray | None,
-) -> tuple[float | None, float | None, float | None]:
-    if reference is None:
-        return None, None, None
+    y_inf: float,
+    t_step: float,
+) -> dict[str, Any]:
+    after = time >= t_step
+    t, y = time[after], values[after]
+    if t.size < 2:
+        return {"reason": "После ступеньки недостаточно отсчётов."}
+    y0 = float(y[0])
+    transition = y_inf - y0
+    if abs(transition) <= 1e-12 * max(1.0, abs(y_inf)):
+        return {"reason": "Выход не изменяет установившееся значение: переходного процесса нет."}
 
-    if isinstance(reference, np.ndarray):
-        reference_values = reference
+    rising = transition > 0.0
+    peak = float(np.max(y) if rising else np.min(y))
+    overshoot = max(0.0, (peak - y_inf) / transition * 100.0)
+
+    low = _crossing_time(t, y, y0 + 0.1 * transition, rising)
+    high = _crossing_time(t, y, y0 + 0.9 * transition, rising)
+    rise = high - low if low is not None and high is not None and high >= low else None
+
+    band = SETTLING_BAND * abs(transition)
+    outside = np.flatnonzero(np.abs(y - y_inf) > band)
+    if outside.size == 0:
+        settling: float | None = 0.0
+    elif int(outside[-1]) == t.size - 1:
+        settling = None
     else:
-        reference_values = np.full_like(values, float(reference), dtype=float)
+        settling = float(t[int(outside[-1]) + 1] - t[0])
 
-    if reference_values.shape != values.shape:
-        return None, None, None
-
-    error = reference_values - values
-    steady_state_error = float(error[-1])
-    iae = float(np.trapezoid(np.abs(error), time))
-    ise = float(np.trapezoid(error * error, time))
-    return steady_state_error, iae, ise
+    return {
+        "overshoot_percent": overshoot,
+        "rise_time": rise,
+        "settling_time": settling,
+        "reason": None if settling is not None else "Процесс не вошёл в 2 % зону до конца моделирования.",
+    }
 
 
 def compute_quality_metrics(
     time: Sequence[float],
     outputs: Mapping[str, Sequence[float]],
     *,
-    references: Mapping[str, float | Sequence[float]] | None = None,
-    settling_band: float = 0.02,
+    steady_values: Mapping[str, float | None],
+    t_step: float,
+    unavailable_reason: str | None = None,
+    references: Mapping[str, float] | None = None,
 ) -> dict[str, dict[str, Any]]:
     time_values = np.asarray(time, dtype=float)
     metrics: dict[str, dict[str, Any]] = {}
-
-    for label, raw_values in outputs.items():
-        values = np.asarray(raw_values, dtype=float)
-        if time_values.size == 0 or values.size == 0 or values.size != time_values.size:
-            metrics[label] = _empty_metrics(settling_band)
-            continue
-
-        if not np.all(np.isfinite(time_values)) or not np.all(np.isfinite(values)):
-            metrics[label] = _empty_metrics(settling_band)
-            continue
-
-        final_value = float(values[-1])
-        reference_input = None if references is None else references.get(label)
-        if isinstance(reference_input, Sequence) and not isinstance(reference_input, str):
-            reference: float | np.ndarray | None = np.asarray(reference_input, dtype=float)
-        else:
-            reference = None if reference_input is None else float(reference_input)
-
-        steady_state_error, iae, ise = _error_integrals(time_values, values, reference)
-        metrics[label] = {
-            "final_value": _finite_or_none(final_value),
-            "max_value": _finite_or_none(float(np.max(values))),
-            "overshoot_percent": _finite_or_none(_overshoot_percent(values, final_value)),
-            "settling_time": _finite_or_none(
-                _settling_time(time_values, values, final_value, settling_band)
-            ),
-            "rise_time": _finite_or_none(_rise_time(time_values, values, final_value)),
-            "steady_state_error": _finite_or_none(steady_state_error),
-            "integral_absolute_error": _finite_or_none(iae),
-            "integral_squared_error": _finite_or_none(ise),
-            "settling_band_percent": settling_band * 100.0,
-            "reference": None if reference is None else "provided",
+    for label, raw in outputs.items():
+        values = np.asarray(raw, dtype=float)
+        y_inf = steady_values.get(label)
+        reference = None if references is None else references.get(label)
+        row: dict[str, Any] = {
+            "step_time": float(t_step),
+            "final_value": float(values[-1]) if values.size else None,
+            "target_value": None if y_inf is None else float(y_inf),
+            "target_source": None if y_inf is None else "model_steady_state",
+            "min_value": float(np.min(values)) if values.size else None,
+            "max_value": float(np.max(values)) if values.size else None,
+            "overshoot_percent": None,
+            "settling_time": None,
+            "rise_time": None,
+            "steady_state_error": None,
+            "integral_absolute_error": None,
+            "integral_squared_error": None,
+            "settling_band_percent": SETTLING_BAND * 100.0,
+            "reference": reference,
+            "reason": unavailable_reason,
         }
-
+        if values.size == time_values.size and values.size and np.all(np.isfinite(values)):
+            if y_inf is not None:
+                indices = _step_indices(time_values, values, float(y_inf), t_step)
+                row.update({key: indices.get(key) for key in ("overshoot_percent", "rise_time", "settling_time")})
+                row["reason"] = indices.get("reason")
+            if reference is not None:
+                error = reference - values
+                row["integral_absolute_error"] = float(np.trapezoid(np.abs(error), time_values))
+                row["integral_squared_error"] = float(np.trapezoid(error * error, time_values))
+                if y_inf is not None:
+                    row["steady_state_error"] = float(reference - y_inf)
+        metrics[label] = row
     return metrics

@@ -1,0 +1,81 @@
+:root {
+  color-scheme: dark;
+
+  /*
+   * Deep space: a black-blue ground with a nebula and stars (SpaceBackdrop),
+   * translucent panels over it, cool white text and one cool glow for live
+   * things (progress, active lines, the sphere's atmosphere). Red is reserved
+   * for instability: poles with Re > 0 and errors.
+   */
+  --bg: #01030a;
+  --surface: rgba(2, 6, 16, 0.72);        /* panels over the backdrop */
+  --surface-solid: #040a1a;               /* blocks, fields, menus */
+  --surface-raised: #060d20;              /* popovers, dialogs */
+  --surface-hover: rgba(170, 196, 255, 0.06);
+  --surface-active: rgba(170, 196, 255, 0.1);
+  --canvas: transparent;
+
+  --text: #eef3ff;             /* 18:1 on --bg */
+  --text-soft: #b4bfd6;        /* 11:1 */
+  --text-muted: #7f8aa3;       /* 5.6:1 */
+  --text-inverse: #01030a;
+
+  --hairline: rgba(170, 196, 255, 0.16);
+  --hairline-strong: rgba(190, 210, 255, 0.32);
+  --hairline-focus: rgba(200, 220, 255, 0.62);
+
+  --accent: #eef3ff;
+  --glow: #7fb2ff;
+  --glow-soft: rgba(127, 178, 255, 0.35);
+  --marker: #ff3b30;
+
+  /* Status: always together with a label. */
+  --success: #6fbf73;
+  --warning: #d9b44a;
+  --danger: #ff5a4f;
+  --success-soft: rgba(111, 191, 115, 0.1);
+  --warning-soft: rgba(217, 180, 74, 0.1);
+  --danger-soft: rgba(255, 90, 79, 0.1);
+
+  /* Signals on the canvas. */
+  --edge-signal: rgba(190, 210, 255, 0.42);
+  --edge-selected: #ffffff;
+  --edge-invalid: var(--danger);
+
+  /*
+   * Data series. A lone signal is white (--text); two or more use this fixed,
+   * CVD-validated order (mirrored in plotTheme.ts).
+   */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+
+  --radius: 2px;
+
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Geist Sans", "Geist", system-ui, sans-serif;
+
+  --type-micro: 11px;   /* uppercase keys, tracking .09em */
+  --type-small: 12px;
+  --type-ui: 13px;
+  --type-body: 14px;
+  --type-value: 15px;
+  --type-big: 32px;     /* light weight, numbers */
+  --tracking-key: 0.09em;
+  --leading: 1.5;
+
+  --header-height: 64px;
+  --status-height: 36px;
+  --library-width: 248px;
+  --inspector-width: 320px;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --motion-fast: 120ms;
+  --motion-normal: 240ms;
+  --motion-slow: 900ms;
+}

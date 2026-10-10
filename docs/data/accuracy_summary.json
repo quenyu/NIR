@@ -1,0 +1,74 @@
+[
+  {
+    "scenario_slug": "integrator",
+    "scenario_title": "Интегратор с единичным входом",
+    "solver": "rk4",
+    "dt": 0.01,
+    "max_abs_error": 0.0,
+    "rmse": 0.0,
+    "final_value_error": 0.0
+  },
+  {
+    "scenario_slug": "integrator",
+    "scenario_title": "Интегратор с единичным входом",
+    "solver": "solve_ivp",
+    "dt": 0.01,
+    "max_abs_error": 4.440892098500626e-16,
+    "rmse": 1.5734076983680476e-16,
+    "final_value_error": 0.0
+  },
+  {
+    "scenario_slug": "first_order_lag",
+    "scenario_title": "Апериодическое звено 1-го порядка",
+    "solver": "rk4",
+    "dt": 0.01,
+    "max_abs_error": 9.97503191157989e-10,
+    "rmse": 4.787271758353444e-10,
+    "final_value_error": -7.276845792603126e-12
+  },
+  {
+    "scenario_slug": "first_order_lag",
+    "scenario_title": "Апериодическое звено 1-го порядка",
+    "solver": "solve_ivp",
+    "dt": 0.01,
+    "max_abs_error": 3.825329386586418e-09,
+    "rmse": 1.8902840238761166e-09,
+    "final_value_error": -3.033074902347721e-09
+  },
+  {
+    "scenario_slug": "second_order_oscillator",
+    "scenario_title": "Колебательное звено 2-го порядка",
+    "solver": "rk4",
+    "dt": 0.005,
+    "max_abs_error": 1.1651470899209926e-09,
+    "rmse": 5.942405924626344e-10,
+    "final_value_error": 1.298623431011947e-10
+  },
+  {
+    "scenario_slug": "second_order_oscillator",
+    "scenario_title": "Колебательное звено 2-го порядка",
+    "solver": "solve_ivp",
+    "dt": 0.005,
+    "max_abs_error": 7.679902935819882e-09,
+    "rmse": 3.871565281702854e-09,
+    "final_value_error": 2.8351194725217965e-09
+  },
+  {
+    "scenario_slug": "butterworth_lpf",
+    "scenario_title": "ФНЧ Баттерворта 2-го порядка",
+    "solver": "rk4",
+    "dt": 0.001,
+    "max_abs_error": 5.718781004304674e-11,
+    "rmse": 1.7596845484622497e-11,
+    "final_value_error": -2.2870594307278225e-14
+  },
+  {
+    "scenario_slug": "butterworth_lpf",
+    "scenario_title": "ФНЧ Баттерворта 2-го порядка",
+    "solver": "solve_ivp",
+    "dt": 0.001,
+    "max_abs_error": 4.528969976824726e-09,
+    "rmse": 1.0302526294661492e-09,
+    "final_value_error": 2.6780688777705564e-11
+  }
+]

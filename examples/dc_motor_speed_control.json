@@ -1,0 +1,126 @@
+{
+  "blocks": [
+    {
+      "id": "speed_setpoint",
+      "type": "StepInput",
+      "parameters": { "name": "Заданная скорость", "amplitude": 1.0, "t0": 0.0 },
+      "input_ports": [],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "speed_error",
+      "type": "Sum",
+      "parameters": { "name": "Ошибка e(t)", "signs": ["+", "-"] },
+      "input_ports": ["in1", "in2"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "speed_pid",
+      "type": "PIDController",
+      "parameters": {
+        "name": "Регулятор скорости",
+        "kp": 0.5,
+        "ki": 0.5,
+        "kd": 0.02,
+        "filter_n": 20.0
+      },
+      "input_ports": ["in"],
+      "output_ports": ["out"]
+    },
+    {
+      "id": "dc_motor",
+      "type": "Subsystem",
+      "parameters": {
+        "name": "Двигатель DC",
+        "diagram": {
+          "blocks": [
+            {
+              "id": "voltage_in",
+              "type": "SubsystemInput",
+              "parameters": { "name": "Напряжение u", "port": "u" },
+              "input_ports": [],
+              "output_ports": ["out"]
+            },
+            {
+              "id": "voltage_sum",
+              "type": "Sum",
+              "parameters": { "name": "u − Kₑω", "signs": ["+", "-"] },
+              "input_ports": ["in1", "in2"],
+              "output_ports": ["out"]
+            },
+            {
+              "id": "electromagnetic",
+              "type": "TransferFunction",
+              "parameters": {
+                "name": "Якорная цепь и момент",
+                "numerator": [0.1],
+                "denominator": [0.1, 2.0]
+              },
+              "input_ports": ["in"],
+              "output_ports": ["out"]
+            },
+            {
+              "id": "mechanics",
+              "type": "TransferFunction",
+              "parameters": {
+                "name": "Механическая часть",
+                "numerator": [1.0],
+                "denominator": [0.02, 0.02]
+              },
+              "input_ports": ["in"],
+              "output_ports": ["out"]
+            },
+            {
+              "id": "back_emf",
+              "type": "Gain",
+              "parameters": { "name": "Противо-ЭДС", "k": 0.1 },
+              "input_ports": ["in"],
+              "output_ports": ["out"]
+            },
+            {
+              "id": "speed_out",
+              "type": "SubsystemOutput",
+              "parameters": { "name": "Скорость ω", "port": "omega" },
+              "input_ports": ["in"],
+              "output_ports": []
+            }
+          ],
+          "connections": [
+            { "from_block": "voltage_in", "from_port": "out", "to_block": "voltage_sum", "to_port": "in1" },
+            { "from_block": "voltage_sum", "from_port": "out", "to_block": "electromagnetic", "to_port": "in" },
+            { "from_block": "electromagnetic", "from_port": "out", "to_block": "mechanics", "to_port": "in" },
+            { "from_block": "mechanics", "from_port": "out", "to_block": "speed_out", "to_port": "in" },
+            { "from_block": "mechanics", "from_port": "out", "to_block": "back_emf", "to_port": "in" },
+            { "from_block": "back_emf", "from_port": "out", "to_block": "voltage_sum", "to_port": "in2" }
+          ]
+        },
+        "layout": {
+          "positions": {
+            "voltage_in": { "x": 20, "y": 170 },
+            "voltage_sum": { "x": 230, "y": 160 },
+            "electromagnetic": { "x": 470, "y": 170 },
+            "mechanics": { "x": 730, "y": 170 },
+            "speed_out": { "x": 1010, "y": 170 },
+            "back_emf": { "x": 790, "y": 380 }
+          }
+        }
+      },
+      "input_ports": ["u"],
+      "output_ports": ["omega"]
+    },
+    {
+      "id": "speed_scope",
+      "type": "Scope",
+      "parameters": { "name": "Скорость двигателя", "label": "ω(t), рад/с", "reference": 1.0 },
+      "input_ports": ["in"],
+      "output_ports": []
+    }
+  ],
+  "connections": [
+    { "from_block": "speed_setpoint", "from_port": "out", "to_block": "speed_error", "to_port": "in1" },
+    { "from_block": "speed_error", "from_port": "out", "to_block": "speed_pid", "to_port": "in" },
+    { "from_block": "speed_pid", "from_port": "out", "to_block": "dc_motor", "to_port": "u" },
+    { "from_block": "dc_motor", "from_port": "omega", "to_block": "speed_scope", "to_port": "in" },
+    { "from_block": "dc_motor", "from_port": "omega", "to_block": "speed_error", "to_port": "in2" }
+  ]
+}

@@ -1,55 +1,32 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import defaultdict
+
+from pydantic import ValidationError
 
 from app.core.block_specs import (
     KNOWN_BLOCK_TYPES,
     expected_input_ports,
     expected_output_ports,
-    has_direct_feedthrough,
     validate_parameters,
 )
 from app.models.diagram import Block, Diagram
+from app.simulation.hierarchy import flatten_diagram
 
 
-def _find_cycle(adjacency: dict[str, set[str]]) -> list[str] | None:
-    visited: set[str] = set()
-    visiting: set[str] = set()
-    stack: list[str] = []
-
-    def dfs(node: str) -> list[str] | None:
-        visiting.add(node)
-        stack.append(node)
-
-        for neighbor in adjacency.get(node, set()):
-            if neighbor in visiting:
-                cycle_start = stack.index(neighbor)
-                return stack[cycle_start:] + [neighbor]
-            if neighbor not in visited:
-                cycle = dfs(neighbor)
-                if cycle is not None:
-                    return cycle
-
-        visiting.remove(node)
-        visited.add(node)
-        stack.pop()
-        return None
-
-    for node in adjacency:
-        if node not in visited:
-            cycle = dfs(node)
-            if cycle is not None:
-                return cycle
-    return None
-
-
-def _block_lookup(blocks: list[Block]) -> tuple[dict[str, Block], list[str]]:
+def _block_lookup(blocks: list[Block], *, flattened: bool) -> tuple[dict[str, Block], list[str]]:
     errors: list[str] = []
     by_id: dict[str, Block] = {}
 
     for block in blocks:
         if not block.id.strip():
             errors.append("Идентификатор блока не может быть пустым.")
+            continue
+        if not flattened and ("::" in block.id or block.id.startswith("@")):
+            errors.append(
+                f"Идентификатор блока '{block.id}' не может содержать '::' или начинаться с '@' "
+                "(эти обозначения зарезервированы для путей подсистем)."
+            )
             continue
         if block.id in by_id:
             errors.append(f"Дублирующийся идентификатор блока '{block.id}'.")
@@ -59,9 +36,9 @@ def _block_lookup(blocks: list[Block]) -> tuple[dict[str, Block], list[str]]:
     return by_id, errors
 
 
-def validate_diagram(diagram: Diagram) -> list[str]:
+def _validate_level(diagram: Diagram, *, allow_interface_blocks: bool, flattened: bool = False) -> list[str]:
     errors: list[str] = []
-    blocks_by_id, id_errors = _block_lookup(diagram.blocks)
+    blocks_by_id, id_errors = _block_lookup(diagram.blocks, flattened=flattened)
     errors.extend(id_errors)
 
     expected_ports: dict[str, tuple[list[str], list[str]]] = {}
@@ -70,6 +47,11 @@ def validate_diagram(diagram: Diagram) -> list[str]:
         if block.type not in KNOWN_BLOCK_TYPES:
             errors.append(f"Блок '{block.id}' имеет неизвестный тип '{block.type}'.")
             continue
+
+        if block.type in {"SubsystemInput", "SubsystemOutput"} and not allow_interface_blocks:
+            errors.append(
+                f"Блок '{block.id}' типа '{block.type}' допустим только внутри Subsystem."
+            )
 
         param_errors = validate_parameters(block.type, block.parameters)
         errors.extend([f"Блок '{block.id}': {message}" for message in param_errors])
@@ -87,8 +69,33 @@ def validate_diagram(diagram: Diagram) -> list[str]:
                 f"Блок '{block.id}': выходные порты должны быть {expected_outputs}, получено {block.output_ports}."
             )
 
+        if block.type == "Subsystem" and isinstance(block.parameters.get("diagram"), dict):
+            try:
+                nested = Diagram.model_validate(block.parameters["diagram"])
+            except ValidationError as exc:
+                errors.append(f"Подсистема '{block.id}': некорректный формат: {exc}")
+            else:
+                nested_errors = _validate_level(nested, allow_interface_blocks=True)
+                errors.extend(
+                    [f"Подсистема '{block.id}': {message}" for message in nested_errors]
+                )
+
+    scope_labels: dict[str, str] = {}
+    for block in diagram.blocks:
+        if block.type != "Scope":
+            continue
+        requested_label = str(block.parameters.get("label") or "").strip()
+        effective_label = requested_label or block.id
+        previous_block = scope_labels.get(effective_label)
+        if previous_block is not None:
+            errors.append(
+                f"Блоки Scope '{previous_block}' и '{block.id}' используют одинаковое "
+                f"имя сигнала '{effective_label}'."
+            )
+        else:
+            scope_labels[effective_label] = block.id
+
     incoming_count: dict[tuple[str, str], int] = defaultdict(int)
-    valid_refs: list[tuple[str, str]] = []
 
     for connection in diagram.connections:
         from_block = blocks_by_id.get(connection.from_block)
@@ -120,7 +127,6 @@ def validate_diagram(diagram: Diagram) -> list[str]:
 
         incoming_key = (connection.to_block, connection.to_port)
         incoming_count[incoming_key] += 1
-        valid_refs.append((connection.from_block, connection.to_block))
 
     for (block_id, port), count in incoming_count.items():
         if count > 1:
@@ -133,53 +139,25 @@ def validate_diagram(diagram: Diagram) -> list[str]:
             if incoming_count[(block_id, port)] == 0:
                 errors.append(f"Обязательный вход '{port}' блока '{block_id}' не подключен.")
 
-    algebraic_nodes = {
-        block.id
-        for block in diagram.blocks
-        if block.type in KNOWN_BLOCK_TYPES
-        and has_direct_feedthrough(block.type, block.parameters)
-        and expected_output_ports(block.type, block.parameters)
-    }
-
-    adjacency: dict[str, set[str]] = {node: set() for node in algebraic_nodes}
-    for source_id, target_id in valid_refs:
-        if source_id in algebraic_nodes and target_id in algebraic_nodes:
-            adjacency[source_id].add(target_id)
-
-    cycle = _find_cycle(adjacency)
-    if cycle is not None:
-        errors.append(
-            "Обнаружена алгебраическая петля без динамического элемента: " + " -> ".join(cycle)
-        )
-
     return errors
 
 
-def static_topological_sort(
-    block_ids: list[str], edges: list[tuple[str, str]]
-) -> list[str]:
-    adjacency: dict[str, set[str]] = {block_id: set() for block_id in block_ids}
-    indegree: dict[str, int] = {block_id: 0 for block_id in block_ids}
+def validate_structure(diagram: Diagram) -> tuple[Diagram | None, list[str]]:
+    """Check every hierarchy level, flatten once and check the flat diagram.
 
-    for source, target in edges:
-        if source not in adjacency or target not in adjacency:
-            continue
-        if target in adjacency[source]:
-            continue
-        adjacency[source].add(target)
-        indegree[target] += 1
+    Returns the flattened diagram when the structure is valid. Algebraic loops
+    are not rejected here: whether a loop is solvable is a numerical property
+    decided when the model is assembled.
+    """
 
-    queue = deque(sorted([node for node, degree in indegree.items() if degree == 0]))
-    ordered: list[str] = []
-    while queue:
-        node = queue.popleft()
-        ordered.append(node)
-        for neighbor in sorted(adjacency[node]):
-            indegree[neighbor] -= 1
-            if indegree[neighbor] == 0:
-                queue.append(neighbor)
+    hierarchy_errors = _validate_level(diagram, allow_interface_blocks=False)
+    if hierarchy_errors:
+        return None, hierarchy_errors
 
-    if len(ordered) != len(block_ids):
-        raise ValueError("Статический граф блоков содержит цикл.")
+    try:
+        flattened = flatten_diagram(diagram)
+    except (ValueError, ValidationError) as exc:
+        return None, [f"Ошибка иерархии подсистем: {exc}"]
 
-    return ordered
+    flat_errors = _validate_level(flattened, allow_interface_blocks=False, flattened=True)
+    return (None, flat_errors) if flat_errors else (flattened, [])

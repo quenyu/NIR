@@ -1,0 +1,62 @@
+{
+  "generated_at_utc": "2026-10-09T08:08:02+00:00",
+  "solvers": [
+    "rk4",
+    "solve_ivp"
+  ],
+  "dt_values": [
+    0.2,
+    0.1,
+    0.05,
+    0.02,
+    0.01,
+    0.005
+  ],
+  "benchmark": {
+    "scenario_slug": "second_order_oscillator",
+    "repetitions": 100,
+    "warmup": 10
+  },
+  "environment": {
+    "python_version": "3.13.16",
+    "platform": "Linux-6.18.44-fc-v80-x86_64-with-glibc2.39"
+  },
+  "scenarios": [
+    {
+      "slug": "integrator",
+      "title": "Интегратор с единичным входом",
+      "description": "Идеальный интегратор под действием единичного ступенчатого сигнала.",
+      "diagram_path": "examples/integrator_step.json",
+      "t_end": 3.0,
+      "default_dt": 0.01,
+      "scope_label": "y"
+    },
+    {
+      "slug": "first_order_lag",
+      "title": "Апериодическое звено 1-го порядка",
+      "description": "FirstOrderLag с k=2.0, T=0.5 на единичный скачок.",
+      "diagram_path": "examples/first_order_lag_step.json",
+      "t_end": 4.0,
+      "default_dt": 0.01,
+      "scope_label": "y"
+    },
+    {
+      "slug": "second_order_oscillator",
+      "title": "Колебательное звено 2-го порядка",
+      "description": "SecondOrderOscillator с k=1.5, wn=3.0, zeta=0.2 на единичный скачок.",
+      "diagram_path": "examples/second_order_oscillator_step.json",
+      "t_end": 6.0,
+      "default_dt": 0.005,
+      "scope_label": "y"
+    },
+    {
+      "slug": "butterworth_lpf",
+      "title": "ФНЧ Баттерворта 2-го порядка",
+      "description": "ButterworthLPF с order=2, cutoff_freq=10 рад/с на единичный скачок.",
+      "diagram_path": "examples/butterworth_lpf_step.json",
+      "t_end": 2.0,
+      "default_dt": 0.001,
+      "scope_label": "y"
+    }
+  ]
+}

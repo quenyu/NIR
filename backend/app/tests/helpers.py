@@ -3,6 +3,17 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.analysis.system import analyze_model
+from app.models.diagram import Diagram
+from app.simulation.model import compile_model
+
+
+def analyze(diagram: dict[str, Any] | Diagram) -> dict[str, Any]:
+    """System analysis of a diagram through the production pipeline."""
+
+    model = Diagram.model_validate(diagram) if isinstance(diagram, dict) else diagram
+    return analyze_model(compile_model(model).model)
+
 
 def block(
     block_id: str,
@@ -209,4 +220,36 @@ def closed_loop_dynamic_diagram() -> dict[str, Any]:
 
 def deep_copy_diagram(diagram: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(diagram)
+
+
+def butterworth_lpf_step_diagram() -> dict[str, Any]:
+    return {
+        "blocks": [
+            block(
+                "step1",
+                "StepInput",
+                parameters={"amplitude": 1.0, "t0": 0.0},
+                input_ports=[],
+                output_ports=["out"],
+            ),
+            block(
+                "bw1",
+                "ButterworthLPF",
+                parameters={"order": 2, "cutoff_freq": 10.0, "y0": 0.0},
+                input_ports=["in"],
+                output_ports=["out"],
+            ),
+            block(
+                "scope1",
+                "Scope",
+                parameters={"label": "y"},
+                input_ports=["in"],
+                output_ports=[],
+            ),
+        ],
+        "connections": [
+            connection("step1", "out", "bw1", "in"),
+            connection("bw1", "out", "scope1", "in"),
+        ],
+    }
 

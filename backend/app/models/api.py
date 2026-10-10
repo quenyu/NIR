@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.diagram import Diagram
+
+MAX_SIMULATION_POINTS = 200_000
 
 
 class ValidateRequest(BaseModel):
@@ -25,18 +28,40 @@ class SimulationRequest(BaseModel):
     solver: Literal["rk4", "solve_ivp"] = "solve_ivp"
 
     @model_validator(mode="after")
-    def validate_time_definition(self) -> "SimulationRequest":
+    def validate_time_definition(self) -> SimulationRequest:
+        if not math.isfinite(self.t_start) or not math.isfinite(self.t_end):
+            raise ValueError("'t_start' и 't_end' должны быть конечными числами.")
         if self.t_end <= self.t_start:
             raise ValueError("'t_end' должен быть больше, чем 't_start'.")
         if self.t_eval is None and self.dt is None:
             raise ValueError("Укажите либо 'dt', либо 't_eval'.")
-        if self.dt is not None and self.dt <= 0.0:
-            raise ValueError("'dt' должен быть больше 0.")
+        if self.dt is not None:
+            if not math.isfinite(self.dt):
+                raise ValueError("'dt' должен быть конечным числом.")
+            if self.dt <= 0.0:
+                raise ValueError("'dt' должен быть больше 0.")
         if self.t_eval is not None:
             if len(self.t_eval) < 2:
                 raise ValueError("'t_eval' должен содержать минимум две точки времени.")
-            if any(t2 <= t1 for t1, t2 in zip(self.t_eval[:-1], self.t_eval[1:])):
+            if len(self.t_eval) > MAX_SIMULATION_POINTS:
+                raise ValueError(
+                    f"'t_eval' не должен содержать более {MAX_SIMULATION_POINTS} точек."
+                )
+            if any(not math.isfinite(value) for value in self.t_eval):
+                raise ValueError("Все значения 't_eval' должны быть конечными.")
+            if any(t2 <= t1 for t1, t2 in zip(self.t_eval[:-1], self.t_eval[1:], strict=True)):
                 raise ValueError("'t_eval' должен быть строго возрастающим.")
+            if not math.isclose(self.t_eval[0], self.t_start, rel_tol=1e-12, abs_tol=1e-12):
+                raise ValueError("Первый отсчёт 't_eval' должен совпадать с 't_start'.")
+            if not math.isclose(self.t_eval[-1], self.t_end, rel_tol=1e-12, abs_tol=1e-12):
+                raise ValueError("Последний отсчёт 't_eval' должен совпадать с 't_end'.")
+        elif self.dt is not None:
+            point_count = math.ceil((self.t_end - self.t_start) / self.dt) + 1
+            if point_count > MAX_SIMULATION_POINTS:
+                raise ValueError(
+                    "Расчётная сетка слишком велика: "
+                    f"не более {MAX_SIMULATION_POINTS} временных отсчётов."
+                )
         return self
 
 
@@ -45,7 +70,84 @@ class SimulationResponse(BaseModel):
     time: list[float] = Field(default_factory=list)
     outputs: dict[str, list[float]] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    stability_analysis: dict[str, Any] = Field(default_factory=dict)
+    system_analysis: dict[str, Any] = Field(default_factory=dict)
+    frequency_analysis: dict[str, Any] = Field(default_factory=dict)
     quality_metrics: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
-    validation_errors: list[str] = Field(default_factory=list)
+
+
+MAX_SWEEP_VALUES = 200
+
+
+class SweepRequest(BaseModel):
+    """Poles of the assembled model while one numeric block parameter varies."""
+
+    diagram: Diagram
+    block_id: str
+    parameter: str
+    values: list[float] = Field(min_length=2, max_length=MAX_SWEEP_VALUES)
+
+    @model_validator(mode="after")
+    def validate_values(self) -> SweepRequest:
+        if any(not math.isfinite(value) for value in self.values):
+            raise ValueError("Все значения параметра должны быть конечными.")
+        return self
+
+
+class SweepPoint(BaseModel):
+    value: float
+    poles: list[dict[str, float]] | None = None
+    stability: str | None = None
+    error: str | None = None
+
+
+class SweepResponse(BaseModel):
+    block_id: str
+    parameter: str
+    points: list[SweepPoint]
+
+
+class LoopCut(BaseModel):
+    """A top-level connection at which the loop is broken."""
+
+    from_block: str
+    from_port: str
+    to_block: str
+    to_port: str
+
+
+class LoopRequest(BaseModel):
+    """Open-loop frequency analysis of the diagram broken at one connection."""
+
+    diagram: Diagram
+    cut: LoopCut | None = None
+
+
+class LoopCrossing(BaseModel):
+    frequency: float
+    value: float
+
+
+class LoopResponse(BaseModel):
+    candidates: list[LoopCut]
+    cut: LoopCut | None = None
+    frequency: list[float] = Field(default_factory=list)
+    magnitude_db: list[float] = Field(default_factory=list)
+    phase_deg: list[float] = Field(default_factory=list)
+    nyquist_real: list[float] = Field(default_factory=list)
+    nyquist_imag: list[float] = Field(default_factory=list)
+    gain_margin: float | None = None
+    gain_margin_db: float | None = None
+    phase_crossover: float | None = None
+    phase_margin: float | None = None
+    gain_crossover: float | None = None
+    gain_crossings: list[LoopCrossing] = Field(default_factory=list)
+    phase_crossings: list[LoopCrossing] = Field(default_factory=list)
+    open_loop_unstable_poles: int | None = None
+    encirclements: int | None = None
+    closed_loop_unstable_poles: int | None = None
+    nyquist_stable: bool | None = None
+    poles_agree: bool | None = None
+    hurwitz: list[float] = Field(default_factory=list)
+    hurwitz_stable: bool | None = None
+    notes: list[str] = Field(default_factory=list)

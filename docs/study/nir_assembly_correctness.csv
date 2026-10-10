@@ -1,0 +1,17 @@
+схема,порядок n,входы × выходы,алг. контуры,ошибка метода,поблочный подход
+series,2,1 × 1,0,1.8e-16,1.8e-16
+parallel,2,1 × 1,0,1.6e-16,1.6e-16
+branching,1,1 × 2,0,0.0e+00,0.0e+00
+negative_feedback,2,1 × 1,0,4.7e-16,4.7e-16
+positive_feedback,1,1 × 1,0,0.0e+00,0.0e+00
+pid_loop,3,1 × 1,0,6.1e-16,6.1e-16
+biproper_loop,1,1 × 1,1,1.1e-16,не собирает
+static_loop,0,1 × 1,1,0.0e+00,не собирает
+subsystem_feedback,1,1 × 1,0,1.1e-16,1.1e-16
+flat_subsystem_feedback,1,1 × 1,0,1.1e-16,1.1e-16
+two_instances,2,1 × 1,0,5.6e-17,5.6e-17
+two_instances_with_inner_scopes,2,1 × 3,0,5.6e-17,5.6e-17
+pass_through,1,1 × 1,0,0.0e+00,0.0e+00
+nested_feedback,1,1 × 1,0,1.1e-16,1.1e-16
+mimo_subsystem,1,2 × 2,0,0.0e+00,0.0e+00
+butterworth,4,1 × 1,0,8.9e-16,8.9e-16

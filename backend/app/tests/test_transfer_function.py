@@ -6,10 +6,15 @@ import pytest
 from app.core.block_specs import has_direct_feedthrough
 from app.models.api import SimulationRequest
 from app.models.diagram import Diagram
-from app.simulation.compiler import compile_diagram
+from app.simulation.assembly import block_realization
+from app.simulation.model import compile_model
+from app.simulation.model import diagram_errors as validate_diagram
 from app.simulation.service import simulate_request
-from app.validation.validator import validate_diagram
 
+
+def _tf_realization(diagram: Diagram):
+    block = next(b for b in diagram.blocks if b.id == "tf1")
+    return block_realization(block)
 
 def _block(
     block_id: str,
@@ -94,7 +99,7 @@ def test_transfer_function_rejects_zero_denominator_leading_coefficient() -> Non
 
     errors = validate_diagram(diagram)
 
-    assert any("denominator[0]" in message and "zero" in message for message in errors)
+    assert any("denominator[0]" in message and "равен 0" in message for message in errors)
 
 
 def test_transfer_function_rejects_improper_numerator_order() -> None:
@@ -102,7 +107,7 @@ def test_transfer_function_rejects_improper_numerator_order() -> None:
 
     errors = validate_diagram(diagram)
 
-    assert any("numerator" in message and "order" in message for message in errors)
+    assert any("numerator" in message and "порядок знаменателя" in message for message in errors)
 
 
 def test_stable_transfer_function_step_response_converges_to_one() -> None:
@@ -118,7 +123,7 @@ def test_stable_transfer_function_step_response_converges_to_one() -> None:
     y = np.array(result.outputs["y"])
 
     assert y[-1] == pytest.approx(1.0, abs=2e-3)
-    assert result.stability_analysis["overall_status"] == "stable"
+    assert result.system_analysis["stability"] == "stable"
     assert result.quality_metrics["y"]["final_value"] == pytest.approx(y[-1])
 
 
@@ -147,10 +152,9 @@ def test_unstable_transfer_function_stability_analysis() -> None:
     )
 
     result = simulate_request(request)
-    stability = result.stability_analysis["transfer_functions"][0]
+    stability = result.system_analysis
 
-    assert stability["block_id"] == "tf1"
-    assert stability["status"] == "unstable"
+    assert stability["stability"] == "unstable"
     assert stability["poles"][0]["real"] == pytest.approx(1.0)
 
 
@@ -164,9 +168,9 @@ def test_integrator_transfer_function_is_marginal() -> None:
     )
 
     result = simulate_request(request)
-    stability = result.stability_analysis["transfer_functions"][0]
+    stability = result.system_analysis
 
-    assert stability["status"] == "marginal"
+    assert stability["stability"] == "marginal"
     assert stability["poles"][0]["real"] == pytest.approx(0.0)
 
 
@@ -181,7 +185,7 @@ def test_second_order_transfer_function_is_stable() -> None:
 
     result = simulate_request(request)
 
-    assert result.stability_analysis["transfer_functions"][0]["status"] == "stable"
+    assert result.system_analysis["stability"] == "stable"
 
 
 def test_transfer_function_normalizes_non_unit_denominator() -> None:
@@ -194,43 +198,40 @@ def test_transfer_function_normalizes_non_unit_denominator() -> None:
     )
 
     result = simulate_request(request)
-    compiled = compile_diagram(request.diagram)
-    model = compiled.transfer_functions["tf1"]
+    model = _tf_realization(request.diagram)
 
     assert result.metadata["state_dimension"] == 1
     assert model.a.shape == (1, 1)
-    assert model.b.shape == (1,)
-    assert model.c.shape == (1,)
-    assert model.d == pytest.approx(0.0)
+    assert model.b.shape == (1, 1)
+    assert model.c.shape == (1, 1)
+    assert model.d[0, 0] == pytest.approx(0.0)
     assert model.a[0, 0] == pytest.approx(-2.0)
-    assert model.c[0] == pytest.approx(2.0 / 3.0)
+    assert model.c[0, 0] == pytest.approx(2.0 / 3.0)
     assert result.outputs["y"][-1] == pytest.approx(1.0 / 3.0, abs=2e-4)
 
 
 def test_transfer_function_state_space_shapes_match_denominator_order() -> None:
     diagram = Diagram.model_validate(_tf_step_diagram([1.0], [1.0, 2.0, 5.0]))
 
-    compiled = compile_diagram(diagram)
-    model = compiled.transfer_functions["tf1"]
+    model = _tf_realization(diagram)
 
-    assert compiled.initial_state.shape == (2,)
+    assert compile_model(diagram).model.x0.shape == (2,)
     assert model.a.shape == (2, 2)
-    assert model.b.shape == (2,)
-    assert model.c.shape == (2,)
-    assert isinstance(model.d, float)
+    assert model.b.shape == (2, 1)
+    assert model.c.shape == (1, 2)
+    assert model.d.shape == (1, 1)
 
 
 def test_proper_not_strictly_proper_transfer_function_has_direct_feedthrough() -> None:
     diagram = Diagram.model_validate(_tf_step_diagram([1.0, 1.0], [1.0, 2.0]))
 
-    compiled = compile_diagram(diagram)
-    model = compiled.transfer_functions["tf1"]
+    model = _tf_realization(diagram)
 
     assert has_direct_feedthrough(
         "TransferFunction",
         {"numerator": [1.0, 1.0], "denominator": [1.0, 2.0]},
     )
-    assert model.d == pytest.approx(1.0)
+    assert model.d[0, 0] == pytest.approx(1.0)
 
 
 def test_direct_feedthrough_transfer_function_loop_is_invalid() -> None:

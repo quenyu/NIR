@@ -1,203 +1,111 @@
-# НИР: веб-прототип визуального моделирования динамических систем
+# Control Lab
 
-Репозиторий содержит учебно-исследовательский прототип, который закрывает полный цикл:
+Веб-система для построения структурных схем, моделирования линейных динамических систем и исследования систем автоматического управления.
 
-`схема -> валидация -> компиляция -> моделирование -> визуализация`
+Рабочий цикл:
 
-Основной фокус проекта:
-- математическая корректность расчётов;
-- прозрачная внутренняя архитектура;
-- валидация схем с понятными ошибками;
-- воспроизводимые автотесты.
+`блоки → соединения → обратные связи → подсистемы → матричная модель → расчёт → графики`
 
-## Что обновлено в текущей версии
-- Интерфейс рабочего поля обновлён: добавление блоков кликом и drag-and-drop, удаление выбранного блока клавишей `Delete`.
-- Параметры блока редактируются в модальном окне (двойной клик по блоку или кнопка `Параметры`).
-- Панель осциллографа расширена: вкладки `График / Сигналы / Метаданные`, полноэкранный режим графика, вертикальный ресайз панели.
-- В тулбаре доступны настройки моделирования: `solver`, `t_end`, `dt`.
-- В ответе `/simulate` возвращаются метаданные расчёта (`requested_solver`, `used_solver`, `state_dimension`, `block_count`, `scope_count`).
-- Есть E2E-тесты на Playwright для пользовательского сценария моделирования и обработки ошибок.
+## Возможности
 
-## Структура монорепозитория
-```text
-.
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── models/
-│   │   ├── simulation/
-│   │   ├── validation/
-│   │   └── tests/
-│   └── pyproject.toml
-├── frontend/
-│   ├── src/
-│   │   ├── api/
-│   │   ├── components/
-│   │   ├── nodes/
-│   │   ├── pages/
-│   │   └── types/
-│   ├── tests/e2e/
-│   └── package.json
-└── examples/
-```
+- визуальный редактор структурных схем: ветвления, положительные и отрицательные обратные связи,
+  многоуровневые подсистемы;
+- компиляция схемы в единую модель `ẋ = Ax + Br`, `z = Cx + Dr`, включая разрешимые алгебраические петли;
+- моделирование методами RK4 (с проверкой устойчивости шага) и RK45 (`solve_ivp`);
+- устойчивость собранной системы, управляемость и наблюдаемость (PBH), показатели качества,
+  частотные характеристики, матрицы модели;
+- годограф по любому числовому параметру, живой пересчёт при перетаскивании ползунка, курсоры осциллографа;
+- палитра команд Ctrl+K и горячие клавиши;
+- сохранение проектов на сервере (SQLite), импорт и экспорт JSON.
+
+Как устроены компилятор, обратные связи и раскрытие подсистем, описано в [`docs/architecture_overview.md`](docs/architecture_overview.md).
+Материалы к защите — в [`docs/DEFENSE_GUIDE.md`](docs/DEFENSE_GUIDE.md), итоговый аудит — в [`docs/DIPLOMA_AUDIT.md`](docs/DIPLOMA_AUDIT.md),
+численное исследование — в [`docs/numerical_study.md`](docs/numerical_study.md).
 
 ## Поддерживаемые блоки
-- `StepInput`
-- `Gain`
-- `Sum`
-- `Integrator`
-- `FirstOrderLag`
-- `SecondOrderOscillator`
-- `Scope`
 
-Каждый блок в диаграмме содержит:
-- `id`
-- `type`
-- `parameters`
-- `input_ports`
-- `output_ports`
-
-Связи (`connections`) задаются направленно: от `from_block/from_port` к `to_block/to_port`.
-
-## Математическая модель (backend/app/simulation/blocks.py)
-- `Gain`: `y = k * x`
-- `Sum`: знаковая сумма входов
-- `StepInput`: `u(t) = A`, если `t >= t0`, иначе `0`
-- `Integrator`: `dy/dt = k * x`
-- `FirstOrderLag`: `dy/dt = (k*x - y)/T`
-- `SecondOrderOscillator`:
-  - `dy/dt = y_dot`
-  - `dy_dot/dt = k*wn^2*x - 2*zeta*wn*y_dot - wn^2*y`
-
-Решатели:
-- `rk4` (кастомный фиксированный шаг);
-- `solve_ivp` (SciPy, RK45).
-
-## Валидация схем (backend/app/validation/validator.py)
-Проверяется:
-- корректность типов блоков;
-- корректность параметров блоков (числовые ограничения и формат);
-- соответствие входных/выходных портов типу блока;
-- валидность ссылок в связях;
-- отсутствие нескольких входящих связей в один входной порт;
-- подключение всех обязательных входов;
-- отсутствие алгебраических петель без динамических блоков.
+- `StepInput`;
+- `Gain`;
+- `Sum`;
+- `Integrator`;
+- `FirstOrderLag`;
+- `SecondOrderOscillator`;
+- `TransferFunction`;
+- `ButterworthLPF`;
+- `PIDController`;
+- `Subsystem`, `SubsystemInput`, `SubsystemOutput`;
+- `Scope`.
 
 ## API
-- `GET /health` -> проверка состояния сервиса.
-- `POST /validate` -> валидация диаграммы.
-- `POST /simulate` -> расчёт и выдача временных рядов.
 
-Пример минимального запроса на моделирование:
-```json
-{
-  "diagram": {
-    "blocks": [],
-    "connections": []
-  },
-  "t_start": 0.0,
-  "t_end": 6.0,
-  "dt": 0.01,
-  "solver": "solve_ivp"
-}
+- `GET /health` — состояние backend;
+- `POST /validate` — проверка схемы;
+- `POST /simulate` — моделирование;
+- `POST /analyze/sweep` — полюса модели при изменении параметра блока (годограф);
+- `/projects` — серверное хранение проектов.
+
+## Структура
+
+```text
+backend/                 FastAPI, математическое ядро и тесты
+frontend/                React, редактор и визуализация
+examples/                примеры схем в JSON
+scripts/benchmarks/      воспроизводимые эксперименты
+docs/                    краткая техническая документация и результаты
+runtime_packages/        автономные зависимости для Windows (не в Git, tools/prepare_runtime.py)
 ```
 
-## Примеры схем
-Файлы в каталоге `examples/`:
-- `gain_only.json`
-- `integrator_step.json`
-- `first_order_lag_step.json`
-- `second_order_oscillator_step.json`
-- `closed_loop_negative_feedback.json`
+## Запуск на Windows
 
-## Запуск проекта
+Распакуйте архив и запустите `start_windows.bat`. Подробности находятся в `README_WINDOWS.md`.
 
-### Требования
-- Python `>= 3.12`
-- Node.js `>= 18`
-- npm
+## Запуск для разработки
 
-### Backend (FastAPI)
+Требуются Python 3.12 или новее, Node.js 18 или новее и npm.
+
+Backend:
+
 ```bash
 cd backend
 python -m venv .venv
-```
-
-Windows (PowerShell):
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Linux/macOS:
-```bash
-source .venv/bin/activate
-```
-
-Установка зависимостей и запуск:
-```bash
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
+source .venv/bin/activate       # Linux/macOS
+# .venv\Scripts\Activate.ps1   # Windows PowerShell
+python -m pip install -e ".[dev]"
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### Frontend (React + Vite)
+Frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-По умолчанию frontend обращается к `http://localhost:8000`.
-При необходимости переопределите URL API через `VITE_API_BASE_URL`.
+Либо через Docker:
 
-## Важно: проблема запуска с `unicorne` / `gunicorn`
-Если backend не запускался с `unicorne`, это ожидаемо:
-- корректное имя сервера: `uvicorn` (а не `unicorne`);
-- `gunicorn` обычно не используется на Windows (часто не запускается в локальной среде Windows);
-- надёжный кроссплатформенный вариант для dev:  
-  `python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
+```bash
+docker compose up --build
+```
 
-Если команда `uvicorn` не найдена:
-- убедитесь, что активировано виртуальное окружение;
-- запускайте именно через `python -m uvicorn ...` (это обходит проблемы с PATH).
+## Проверки
 
-## Автотесты
-
-### Backend (pytest)
 ```bash
 cd backend
-python -m pytest
+python -m pip install -e ".[dev,experiments]"
+python -m pytest                       # тесты ядра
+python -m ruff check app scripts       # линтер
+python scripts/numerical_study.py      # численное исследование → docs/numerical_study.md
+
+cd ../frontend
+npm run check                          # tsc, eslint, unit-тесты
+PYTHON=python npx playwright test      # e2e: поднимает backend и frontend сам
 ```
 
-Покрытие включает:
-- unit-тесты уравнений блоков;
-- тесты валидации схем;
-- численные тесты против аналитических/референсных зависимостей;
-- API-тесты `/validate` и `/simulate`.
+`PYTHON` — интерпретатор с установленным backend. Для e2e нужен браузер Playwright (`npx playwright install chromium`).
 
-### Frontend E2E (Playwright)
-```bash
-cd frontend
-npm run test:e2e
-```
+## Границы проекта
 
-Если Playwright запускается впервые:
-```bash
-npx playwright install
-```
-
-## Ограничения прототипа
-- нет авторизации и управления пользователями;
-- нет БД и персистентного хранения схем;
-- нет совместного редактирования;
-- нет продвинутой обработки жёстких систем и событий;
-- алгебраические петли только отклоняются (DAE-решатель не реализован).
-
-## Потенциальные расширения (этап диплома)
-- расширение библиотеки блоков (PID, нелинейности, насыщение и т.д.);
-- иерархия подсистем и переиспользуемые компоненты;
-- сохранение проектов и управление версиями моделей;
-- сравнительный анализ решателей и оценка ошибок;
-- параметрические прогоны и пакетные эксперименты;
-- экспорт отчётов (графики, метрики, метаданные модели).
+Линейные непрерывные стационарные звенья и ступенчатые источники. Нет нелинейных и дискретных блоков,
+DAE-решателя и совместного редактирования. Алгебраическая петля принимается, если она разрешима и хорошо
+обусловлена; иначе сервер называет её блоки.

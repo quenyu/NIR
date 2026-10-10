@@ -1,0 +1,273 @@
+.panel {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  color: var(--text);
+  background: var(--surface-solid);
+}
+
+.collapsed {
+  grid-template-rows: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  min-height: 40px;
+  padding: 4px 12px 0 20px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: var(--type-micro);
+  letter-spacing: var(--tracking-key);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.statusIndicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.state-success .statusIndicator { background: var(--success); }
+.state-error .statusIndicator { background: var(--danger); }
+.state-running .statusIndicator,
+.state-validating .statusIndicator { background: var(--text); animation: blink 1s steps(2, start) infinite; }
+
+.statusLabel {
+  color: var(--text-soft);
+}
+
+.tabs {
+  display: flex;
+  gap: 24px;
+  margin-right: auto;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: var(--type-micro);
+  letter-spacing: var(--tracking-key);
+  text-transform: uppercase;
+}
+
+.tab:hover {
+  color: var(--text-soft);
+}
+
+.activeTab {
+  color: var(--text);
+}
+
+.activeTab::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  height: 1px;
+  background: var(--text);
+}
+
+.tabCount {
+  color: var(--text-muted);
+}
+
+.collapseButton {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.collapseButton:hover {
+  color: var(--text);
+}
+
+.chevron {
+  transform: rotate(90deg);
+  transition: transform var(--motion-fast) ease;
+}
+
+.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.body {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 20px 16px;
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.emptyState > div {
+  display: grid;
+  gap: 2px;
+}
+
+.emptyState strong {
+  font-family: var(--font-sans);
+  font-size: var(--type-ui);
+  font-weight: 400;
+}
+
+.emptyState span {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+}
+
+.emptyIcon {
+  color: var(--text-muted);
+}
+
+.successIcon {
+  color: var(--success);
+}
+
+.issueList,
+.progressList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issue {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 12px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.issue:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.issue:not(:disabled):hover {
+  background: var(--surface-hover);
+}
+
+.issueMark {
+  padding-top: 2px;
+}
+
+.severity-error .issueMark { color: var(--danger); }
+.severity-warning .issueMark { color: var(--warning); }
+.severity-info .issueMark { color: var(--text-muted); }
+
+.issueCopy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.issueTitle {
+  font-family: var(--font-sans);
+  font-size: var(--type-ui);
+}
+
+.issueMessage {
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+  line-height: 1.45;
+}
+
+.blockRef {
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+}
+
+.issueChevron {
+  color: var(--text-muted);
+}
+
+.progressItem {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.progressMark {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+}
+
+.progressMark :global(.ui-icon) {
+  width: 10px;
+  height: 10px;
+}
+
+.progress-active .progressMark {
+  border-color: var(--text);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+.progress-done .progressMark {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.progress-error .progressMark {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.progressCopy {
+  display: grid;
+  gap: 2px;
+}
+
+.progressCopy strong {
+  font-family: var(--font-sans);
+  font-size: var(--type-ui);
+  font-weight: 400;
+}
+
+.progressCopy span {
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+
+@keyframes blink {
+  50% { opacity: 0.25; }
+}

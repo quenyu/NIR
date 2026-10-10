@@ -16,7 +16,7 @@ def sum_output(values: Sequence[float], signs: Sequence[str]) -> float:
     if len(values) != len(signs):
         raise ValueError("Списки values и signs должны иметь одинаковую длину.")
     total = 0.0
-    for value, sign in zip(values, signs):
+    for value, sign in zip(values, signs, strict=True):
         if sign == "+":
             total += value
         elif sign == "-":

@@ -1,17 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.errors import register_error_handlers
 from app.api.routes import router
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="API НИР по динамическому моделированию",
-        version="0.1.0",
-        description=(
-            "Исследовательский API-прототип для проверки и моделирования "
-            "визуальных блок-схем динамических систем."
-        ),
+        title="Control Lab API",
+        version="1.0.0",
+        description="Проверка, сборка и моделирование структурных схем САУ.",
     )
     app.add_middleware(
         CORSMiddleware,
@@ -24,6 +22,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    register_error_handlers(app)
     app.include_router(router)
     return app
 
