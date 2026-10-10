@@ -105,3 +105,49 @@ class SweepResponse(BaseModel):
     block_id: str
     parameter: str
     points: list[SweepPoint]
+
+
+class LoopCut(BaseModel):
+    """A top-level connection at which the loop is broken."""
+
+    from_block: str
+    from_port: str
+    to_block: str
+    to_port: str
+
+
+class LoopRequest(BaseModel):
+    """Open-loop frequency analysis of the diagram broken at one connection."""
+
+    diagram: Diagram
+    cut: LoopCut | None = None
+
+
+class LoopCrossing(BaseModel):
+    frequency: float
+    value: float
+
+
+class LoopResponse(BaseModel):
+    candidates: list[LoopCut]
+    cut: LoopCut | None = None
+    frequency: list[float] = Field(default_factory=list)
+    magnitude_db: list[float] = Field(default_factory=list)
+    phase_deg: list[float] = Field(default_factory=list)
+    nyquist_real: list[float] = Field(default_factory=list)
+    nyquist_imag: list[float] = Field(default_factory=list)
+    gain_margin: float | None = None
+    gain_margin_db: float | None = None
+    phase_crossover: float | None = None
+    phase_margin: float | None = None
+    gain_crossover: float | None = None
+    gain_crossings: list[LoopCrossing] = Field(default_factory=list)
+    phase_crossings: list[LoopCrossing] = Field(default_factory=list)
+    open_loop_unstable_poles: int | None = None
+    encirclements: int | None = None
+    closed_loop_unstable_poles: int | None = None
+    nyquist_stable: bool | None = None
+    poles_agree: bool | None = None
+    hurwitz: list[float] = Field(default_factory=list)
+    hurwitz_stable: bool | None = None
+    notes: list[str] = Field(default_factory=list)

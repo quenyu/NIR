@@ -33,6 +33,7 @@ import {
   simulateDiagram,
   updateServerProject,
   validateDiagram,
+  type LoopCut,
   type ServerProjectPayload,
 } from "../api/client";
 import {
@@ -56,6 +57,7 @@ import { SimulationChart, type ScopeTab } from "../components/SimulationChart";
 import { ServerProjectsModal } from "../components/ServerProjectsModal";
 import { UiIcon } from "../components/UiIcon";
 import { ScrambleText } from "../features/motion/ScrambleText";
+import { LOOP_CUT_EVENT } from "../components/simulation/LoopMarginsView";
 import { emitRunWave } from "../components/space/SpaceBackdrop";
 import { WorkspaceInspector } from "../components/workspace/WorkspaceInspector";
 import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
@@ -203,6 +205,12 @@ function ModelingWorkspace() {
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [nodeCounter, setNodeCounter] = useState(1);
   const [hierarchyStack, setHierarchyStack] = useState<HierarchyFrame[]>([]);
+  const [loopCut, setLoopCut] = useState<LoopCut | null>(null);
+  useEffect(() => {
+    const onCut = (event: Event) => setLoopCut((event as CustomEvent<LoopCut | null>).detail);
+    window.addEventListener(LOOP_CUT_EVENT, onCut);
+    return () => window.removeEventListener(LOOP_CUT_EVENT, onCut);
+  }, []);
   const [isServerProjectsOpen, setIsServerProjectsOpen] = useState(false);
   const [serverProjectId, setServerProjectId] = useState<string | null>(null);
   const [serverProjectVersion, setServerProjectVersion] = useState<number | null>(null);
@@ -359,6 +367,17 @@ function ModelingWorkspace() {
     }),
     [diagnosticSeverityByNode, nodes],
   );
+
+  // The connection at which the stability-margin analysis breaks the loop (root level only).
+  const displayedEdges = useMemo(() => {
+    if (!loopCut || hierarchyStack.length > 0) return edges;
+    return edges.map((edge) =>
+      edge.source === loopCut.from_block && (edge.sourceHandle ?? "out") === loopCut.from_port
+        && edge.target === loopCut.to_block && (edge.targetHandle ?? "in") === loopCut.to_port
+        ? { ...edge, className: [edge.className, "is-loop-cut"].filter(Boolean).join(" ") }
+        : edge,
+    );
+  }, [edges, hierarchyStack.length, loopCut]);
 
   const effectiveDiagnosticsState: DiagnosticsRunState =
     diagnosticsState === "idle" && errors.length > 0 ? "error" : diagnosticsState;
@@ -1441,7 +1460,7 @@ function ModelingWorkspace() {
               )}
               <ReactFlow
                 nodes={renderedNodes}
-                edges={edges}
+                edges={displayedEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}

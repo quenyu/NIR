@@ -128,6 +128,39 @@ const compactMeasurementSubsystem = sinkSubsystem(
 
 export const EXAMPLE_PRESETS: ExamplePreset[] = [
   {
+    id: "thirdOrderLoop",
+    title: "Контур 3-го порядка",
+    diagram: {
+      blocks: [
+        { id: "reference", type: "StepInput", parameters: { amplitude: 1, t0: 0 }, input_ports: [], output_ports: ["out"] },
+        { id: "error", type: "Sum", parameters: { signs: ["+", "-"] }, input_ports: ["in1", "in2"], output_ports: ["out"] },
+        { id: "gain", type: "Gain", parameters: { k: 2 }, input_ports: ["in"], output_ports: ["out"] },
+        {
+          id: "plant",
+          type: "TransferFunction",
+          parameters: { numerator: [1], denominator: [1, 3, 2, 0] },
+          input_ports: ["in"],
+          output_ports: ["out"],
+        },
+        { id: "output", type: "Scope", parameters: { label: "y" }, input_ports: ["in"], output_ports: [] },
+      ],
+      connections: [
+        { from_block: "reference", from_port: "out", to_block: "error", to_port: "in1" },
+        { from_block: "error", from_port: "out", to_block: "gain", to_port: "in" },
+        { from_block: "gain", from_port: "out", to_block: "plant", to_port: "in" },
+        { from_block: "plant", from_port: "out", to_block: "error", to_port: "in2" },
+        { from_block: "plant", from_port: "out", to_block: "output", to_port: "in" },
+      ],
+    },
+    positions: {
+      reference: { x: 60, y: 190 },
+      error: { x: 300, y: 190 },
+      gain: { x: 540, y: 190 },
+      plant: { x: 780, y: 190 },
+      output: { x: 1040, y: 190 },
+    },
+  },
+  {
     id: "unstablePlantFeedback",
     title: "Стабилизация неустойчивого объекта",
     diagram: {
@@ -1111,6 +1144,7 @@ export interface StarterPreset {
 
 const STARTER_DEFINITIONS = [
   { id: "unstablePlantFeedback", title: "Стабилизация неустойчивого объекта", category: "Обратная связь", description: "1/(s−1) и П-регулятор: устойчивость замкнутой системы" },
+  { id: "thirdOrderLoop", title: "Контур 3-го порядка", category: "Устойчивость", description: "K/(s(s+1)(s+2)): запасы по амплитуде и фазе, Найквист" },
   { id: "firstOrder", title: "Звено 1-го порядка", category: "Базовая модель", description: "Переходная характеристика K/(Ts+1)" },
   { id: "secondOrder", title: "Колебательная система", category: "Динамика", description: "Перерегулирование и коэффициент затухания" },
   { id: "closedLoop", title: "Отрицательная обратная связь", category: "Анализ", description: "Замкнутый контур и проверка устойчивости" },

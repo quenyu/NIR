@@ -129,6 +129,48 @@ export function sweepParameter(
   return request("/analyze/sweep", { ...post({ diagram, block_id: blockId, parameter, values }), signal });
 }
 
+export interface LoopCut {
+  from_block: string;
+  from_port: string;
+  to_block: string;
+  to_port: string;
+}
+
+export interface LoopCrossing {
+  frequency: number;
+  value: number;
+}
+
+export interface LoopResponse {
+  candidates: LoopCut[];
+  cut: LoopCut | null;
+  frequency: number[];
+  magnitude_db: number[];
+  phase_deg: number[];
+  nyquist_real: number[];
+  nyquist_imag: number[];
+  gain_margin: number | null;
+  gain_margin_db: number | null;
+  phase_crossover: number | null;
+  phase_margin: number | null;
+  gain_crossover: number | null;
+  gain_crossings: LoopCrossing[];
+  phase_crossings: LoopCrossing[];
+  open_loop_unstable_poles: number | null;
+  encirclements: number | null;
+  closed_loop_unstable_poles: number | null;
+  nyquist_stable: boolean | null;
+  poles_agree: boolean | null;
+  hurwitz: number[];
+  hurwitz_stable: boolean | null;
+  notes: string[];
+}
+
+/** Open-loop frequency analysis with the loop broken at one connection (no cut: the candidates). */
+export function analyzeLoop(diagram: Diagram, cut: LoopCut | null, signal?: AbortSignal): Promise<LoopResponse> {
+  return request("/analyze/loop", { ...post({ diagram, cut }), signal });
+}
+
 export interface ServerProjectPayload {
   diagram: Diagram;
   layout: {

@@ -1964,3 +1964,67 @@
     grid-template-columns: auto auto;
   }
 }
+
+/* ---- Stability margins (loop broken at one connection) ---- */
+.loop-margins {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+.loop-margins__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.loop-margins h3 {
+  margin: 0;
+}
+.loop-margins__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 16px;
+  border: 1px solid var(--hairline);
+}
+.loop-margins__summary > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-right: 1px solid var(--hairline);
+}
+.loop-margins__summary > div:last-child {
+  border-right: 0;
+}
+.loop-margins__summary dt {
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+  letter-spacing: var(--tracking-key);
+  text-transform: uppercase;
+}
+.loop-margins__summary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+}
+.loop-margins__summary dd.is-stable {
+  color: var(--success);
+}
+.loop-margins__summary dd.is-unstable {
+  color: var(--danger);
+}
+.loop-margins__summary span {
+  color: var(--text-muted);
+  font-size: var(--type-small);
+}
+.react-flow__edge.is-loop-cut .react-flow__edge-path {
+  stroke: var(--glow);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+@media (max-width: 900px) {
+  .loop-margins__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

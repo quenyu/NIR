@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response, status
 
+from app.analysis.loop import analyze_loop
 from app.analysis.sweep import sweep_poles
 from app.models.api import (
+    LoopRequest,
+    LoopResponse,
     SimulationRequest,
     SimulationResponse,
     SweepRequest,
@@ -78,3 +81,8 @@ def simulate_endpoint(payload: SimulationRequest) -> SimulationResponse:
 @router.post("/analyze/sweep", response_model=SweepResponse)
 def sweep_endpoint(payload: SweepRequest) -> SweepResponse:
     return sweep_poles(payload)
+
+
+@router.post("/analyze/loop", response_model=LoopResponse)
+def loop_endpoint(payload: LoopRequest) -> LoopResponse:
+    return analyze_loop(payload)

@@ -7,6 +7,7 @@ import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
 import { PoleMap } from "./simulation/PoleMap";
 import { PoleSphere } from "./simulation/PoleSphere";
+import { LoopMarginsView } from "./simulation/LoopMarginsView";
 import type { Diagram } from "../types/diagram";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { stabilityPresentation } from "../features/modelingWorkspace";
@@ -508,6 +509,7 @@ export function SimulationChart({
         </div>
 
         <p className="frequency-interpretation">{frequency.interpretation}</p>
+        <LoopMarginsView diagram={diagram ?? null} />
       </div>
     );
   }
