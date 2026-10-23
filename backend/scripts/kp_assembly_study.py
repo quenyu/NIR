@@ -1,10 +1,11 @@
-"""Исследование метода автоматического построения модели САУ по структурной схеме (НИР).
+"""Исследование метода автоматического построения модели САУ по структурной схеме (курсовой проект).
 
-    cd backend && python scripts/nir_assembly_study.py
+    cd backend && python scripts/kp_assembly_study.py
 
-Пишет таблицы docs/study/nir_assembly_*.csv, графики docs/figures/nir_assembly_*.png и
-сводку docs/nir_assembly_study.md. Разделы:
+Пишет таблицы docs/study/kp_assembly_*.csv, графики docs/figures/kp_assembly_*.png и
+сводку docs/kp_assembly_study.md. Разделы:
 
+0. примеры: матрицы A, B, C, D для схем раздела 4 КП и сверка с ручным расчётом;
 1. корректность: модели 16 эталонных схем против правил структурных преобразований,
    сравнение с поблочным подходом (прежний компилятор, app/tests/reference_evaluator.py);
 2. алгебраические контуры: обусловленность κ и точность решения в зависимости от коэффициента петли;
@@ -233,6 +234,115 @@ def cost() -> list[dict]:
     return rows
 
 
+def _feedback(b: DiagramBuilder, forward: str, back_from: str) -> None:
+    b.add("u", "StepInput", amplitude=1.0, t0=0.0)
+    b.add("e", "Sum", signs=["+", "-"])
+    b.add("y", "Scope", label="y")
+    b.link("u", "e", into="in1")
+    b.link("e", forward)
+    b.link(back_from, "y")
+    b.link(back_from, "e", into="in2")
+
+
+def example_diagrams() -> list[dict]:
+    """Схемы примеров раздела 4 КП и их передаточные функции, найденные вручную."""
+
+    series = DiagramBuilder()
+    series.add("u", "StepInput", amplitude=1.0, t0=0.0)
+    series.add("lag", "FirstOrderLag", k=2.0, T=0.5, y0=0.0)
+    series.add("int", "Integrator", k=1.0, y0=0.0)
+    series.add("y", "Scope", label="y")
+    series.link("u", "lag")
+    series.link("lag", "int")
+    series.link("int", "y")
+
+    parallel = DiagramBuilder()
+    parallel.add("u", "StepInput", amplitude=1.0, t0=0.0)
+    parallel.add("lag", "FirstOrderLag", k=1.0, T=1.0, y0=0.0)
+    parallel.add("k", "Gain", k=2.0)
+    parallel.add("sum", "Sum", signs=["+", "+"])
+    parallel.add("y", "Scope", label="y")
+    parallel.link("u", "lag")
+    parallel.link("u", "k")
+    parallel.link("lag", "sum", into="in1")
+    parallel.link("k", "sum", into="in2")
+    parallel.link("sum", "y")
+
+    feedback = DiagramBuilder()
+    feedback.add("k", "Gain", k=3.0)
+    feedback.add("plant", "TransferFunction", numerator=[1.0], denominator=[1.0, -1.0])
+    feedback.link("k", "plant")
+    _feedback(feedback, "k", "plant")
+
+    inner = DiagramBuilder()
+    inner.add("in", "SubsystemInput", port="in")
+    inner.add("k", "Gain", k=3.0)
+    inner.add("plant", "TransferFunction", numerator=[1.0], denominator=[1.0, -1.0])
+    inner.add("out", "SubsystemOutput", port="out")
+    inner.link("in", "k")
+    inner.link("k", "plant")
+    inner.link("plant", "out")
+    nested = DiagramBuilder()
+    nested.subsystem("object", inner)
+    _feedback(nested, "object", "object")
+
+    third = DiagramBuilder()
+    third.add("k", "Gain", k=2.0)
+    third.add("plant", "TransferFunction", numerator=[1.0], denominator=[1.0, 3.0, 2.0, 0.0])
+    third.link("k", "plant")
+    _feedback(third, "k", "plant")
+
+    def tf(numerator, denominator):
+        return lambda s: np.polyval(numerator, s) / np.polyval(denominator, s)
+
+    return [
+        {"name": "последовательное соединение", "diagram": series.build(), "transfer": tf([4.0], [1.0, 2.0, 0.0]),
+         "hand": "W = 2/(0,5s+1) · 1/s = 4/(s(s+2))"},
+        {"name": "параллельное соединение", "diagram": parallel.build(), "transfer": tf([2.0, 3.0], [1.0, 1.0]),
+         "hand": "W = 1/(s+1) + 2 = (2s+3)/(s+1)"},
+        {"name": "обратная связь", "diagram": feedback.build(), "transfer": tf([3.0], [1.0, 2.0]),
+         "hand": "W = 3/(s−1) / (1 + 3/(s−1)) = 3/(s+2)"},
+        {"name": "обратная связь через подсистему", "diagram": nested.build(), "transfer": tf([3.0], [1.0, 2.0]),
+         "hand": "та же схема, звенья внутри подсистемы: W = 3/(s+2)"},
+        {"name": "контур 3-го порядка", "diagram": third.build(), "transfer": tf([2.0], [1.0, 3.0, 2.0, 2.0]),
+         "hand": "W = 2/(s³+3s²+2s) / (1 + 2/(s³+3s²+2s)) = 2/(s³+3s²+2s+2)"},
+    ]
+
+
+def _matrix(values: np.ndarray) -> str:
+    if values.size == 0:
+        return "[]"
+    return "[" + "; ".join(" ".join(f"{v:.6g}" for v in row) for row in np.atleast_2d(values)) + "]"
+
+
+def worked_examples() -> list[dict]:
+    rows = []
+    for example in example_diagrams():
+        model = compile_model(Diagram.model_validate(example["diagram"])).model
+        error = relative_error(model.a, model.b, model.c, model.d, lambda s, f=example["transfer"]: np.array([[f(s)]]))
+        rows.append({
+            "пример": example["name"],
+            "ручной расчёт": example["hand"],
+            "состояния": ", ".join(state.label for state in model.states),
+            "A": _matrix(model.a),
+            "B": _matrix(model.b),
+            "C": _matrix(model.c),
+            "D": _matrix(model.d),
+            "det(sI − A)": " ".join(f"{c:.6g}" for c in np.poly(model.a)) if model.state_dimension else "—",
+            "расхождение с ручным": f"{error:.1e}",
+        })
+    for k in (0.5, 1.0):
+        try:
+            model = compile_model(Diagram.model_validate(static_loop_case(k, ("+", "+")).diagram)).model
+            result = f"D = {_matrix(model.d)}, κ = {model.algebraic_loops[0].condition_number:.3g}"
+        except DiagramCompilationError as exc:
+            result = exc.errors[0]
+        rows.append({"пример": f"контур без инерции, k = {k:g}", "ручной расчёт": "y = k/(1 − k)·u",
+                     "состояния": "—", "A": "[]", "B": "[]", "C": "[]", "D": result, "det(sI − A)": "—",
+                     "расхождение с ручным": "—"})
+    return rows
+
+
 def plot_loop_conditioning(curve: list[tuple[float, float, float]]) -> None:
     figure, axis = plt.subplots(figsize=(7.5, 3.8))
     kappas = [c[0] for c in curve]
@@ -246,7 +356,7 @@ def plot_loop_conditioning(curve: list[tuple[float, float, float]]) -> None:
     axis.grid(True, which="both", color="0.85", lw=0.6)
     axis.legend(frameon=False)
     figure.tight_layout()
-    figure.savefig(FIGURES / "nir_assembly_loops.png", dpi=170)
+    figure.savefig(FIGURES / "kp_assembly_loops.png", dpi=170)
     plt.close(figure)
 
 
@@ -262,7 +372,7 @@ def plot_cost(rows: list[dict]) -> None:
     axis.grid(True, which="both", color="0.85", lw=0.6)
     axis.legend(frameon=False)
     figure.tight_layout()
-    figure.savefig(FIGURES / "nir_assembly_cost.png", dpi=170)
+    figure.savefig(FIGURES / "kp_assembly_cost.png", dpi=170)
     plt.close(figure)
 
 
@@ -272,16 +382,22 @@ def main() -> None:
     loops, curve = algebraic_loops()
     equivalence, depth = hierarchy()
     timing = cost()
-    write_csv("nir_assembly_correctness.csv", correct)
-    write_csv("nir_assembly_loops.csv", loops)
-    write_csv("nir_assembly_equivalence.csv", equivalence)
-    write_csv("nir_assembly_depth.csv", depth)
-    write_csv("nir_assembly_cost.csv", timing)
+    examples = worked_examples()
+    write_csv("kp_assembly_examples.csv", examples)
+    write_csv("kp_assembly_correctness.csv", correct)
+    write_csv("kp_assembly_loops.csv", loops)
+    write_csv("kp_assembly_equivalence.csv", equivalence)
+    write_csv("kp_assembly_depth.csv", depth)
+    write_csv("kp_assembly_cost.csv", timing)
     plot_loop_conditioning(curve)
     plot_cost(timing)
-    report = f"""# Исследование метода построения модели по структурной схеме
+    report = f"""# Построение модели САУ в пространстве состояний по структурной схеме
 
-_Сгенерировано `backend/scripts/nir_assembly_study.py` · Python {platform.python_version()} · {platform.platform()}._
+_Сгенерировано `backend/scripts/kp_assembly_study.py` · Python {platform.python_version()} · {platform.platform()}._
+
+## 0. Примеры построения модели
+
+{table(examples)}
 
 ## 1. Корректность на эталонных схемах
 
@@ -293,7 +409,7 @@ _Сгенерировано `backend/scripts/nir_assembly_study.py` · Python {p
 
 {table(loops)}
 
-![Ошибка от обусловленности](figures/nir_assembly_loops.png)
+![Ошибка от обусловленности](figures/kp_assembly_loops.png)
 
 ## 3. Иерархия
 
@@ -305,9 +421,9 @@ _Сгенерировано `backend/scripts/nir_assembly_study.py` · Python {p
 
 {table(timing)}
 
-![Время сборки](figures/nir_assembly_cost.png)
+![Время сборки](figures/kp_assembly_cost.png)
 """
-    (REPO / "docs" / "nir_assembly_study.md").write_text(report, encoding="utf-8")
+    (REPO / "docs" / "kp_assembly_study.md").write_text(report, encoding="utf-8")
     print(report)
 
 
