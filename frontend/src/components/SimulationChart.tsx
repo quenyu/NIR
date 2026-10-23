@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "../features/theme";
 import { createPortal } from "react-dom";
 import Plot from "./Plot";
-import { axis, MARKER_COLOR, PLOT_CONFIG, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, seriesColor } from "./plotTheme";
+import { axis, ink, MARKER_COLOR, PLOT_CONFIG, plotLayout, SECONDARY_COLOR, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, seriesColor, seriesDash } from "./plotTheme";
 import type { SimulationResponse, SystemAnalysis } from "../types/api";
 import { UiIcon } from "./UiIcon";
 import { StateSpacePanel } from "./simulation/StateSpacePanel";
@@ -98,6 +99,7 @@ export function SimulationChart({
   requestedTab,
   onTabChange,
 }: SimulationChartProps) {
+  const theme = useTheme();
   const [activeTab, setActiveTab] = useState<ScopeTab>(requestedTab ?? "plot");
   const [channelIndex, setChannelIndex] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -159,7 +161,7 @@ export function SimulationChart({
       mode: "lines",
       type: "scatter",
       name: label,
-      line: { color: seriesColor(index, labels.length), width: 1.5 },
+      line: { color: seriesColor(index, labels.length), dash: seriesDash(index, labels.length), width: 1.5 },
     }));
     if (!comparable || !showPrevious || !previousResult) {
       return current;
@@ -172,11 +174,12 @@ export function SimulationChart({
         mode: "lines",
         type: "scatter",
         name: `${label} · предыдущий расчёт`,
-        line: { color: labels.length === 1 ? "#8a8a8a" : seriesColor(labels.indexOf(label), labels.length), width: 1, dash: "dot" },
+        line: { color: labels.length === 1 ? SECONDARY_COLOR : seriesColor(labels.indexOf(label), labels.length), width: 1, dash: "dot" },
         opacity: 0.8,
       }));
     return [...previous, ...current];
-  }, [result, previousResult, comparable, showPrevious]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- colours come from the theme (plotTheme)
+  }, [result, previousResult, comparable, showPrevious, theme]);
 
   const probe = useMemo(() => {
     if (!result?.success) return null;
@@ -194,7 +197,7 @@ export function SimulationChart({
     if (probe.second) {
       marks.push({
         x: [probe.second.t], y: [probe.second.y], type: "scatter", mode: "markers", hoverinfo: "skip", showlegend: false,
-        marker: { size: 8, color: "#000000", line: { color: "#f2f2f2", width: 1 } },
+        marker: { size: 8, color: ink(0), line: { color: SINGLE_SERIES_COLOR, width: 1 } },
       });
     }
     if (probe.first) {
@@ -204,7 +207,8 @@ export function SimulationChart({
       });
     }
     return marks;
-  }, [probe]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- colours come from the theme (plotTheme)
+  }, [probe, theme]);
 
   const cursorShapes = useMemo(() => {
     const shapes: Record<string, unknown>[] = [];
@@ -214,31 +218,33 @@ export function SimulationChart({
       const start = probe.values[0] ?? 0;
       const band = Math.abs(target - start) * 0.02;
       if (band > 0) {
-        shapes.push({ type: "rect", xref: "paper", x0: 0, x1: 1, y0: target - band, y1: target + band, fillcolor: "rgba(255,255,255,0.05)", line: { width: 0 }, layer: "below" });
+        shapes.push({ type: "rect", xref: "paper", x0: 0, x1: 1, y0: target - band, y1: target + band, fillcolor: ink(0.05), line: { width: 0 }, layer: "below" });
       }
-      shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: target, y1: target, line: { color: "rgba(255,255,255,0.45)", width: 1, dash: "dot" } });
+      shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: target, y1: target, line: { color: ink(0.45), width: 1, dash: "dot" } });
       if (metrics.settling_time !== null && metrics.settling_time !== undefined) {
         const settle = (metrics.step_time ?? 0) + metrics.settling_time;
-        shapes.push({ type: "line", yref: "paper", x0: settle, x1: settle, y0: 0, y1: 1, line: { color: "rgba(255,255,255,0.35)", width: 1, dash: "dot" } });
+        shapes.push({ type: "line", yref: "paper", x0: settle, x1: settle, y0: 0, y1: 1, line: { color: ink(0.35), width: 1, dash: "dot" } });
       }
     }
     if (probe?.first) {
-      shapes.push({ type: "line", yref: "paper", x0: probe.first.t, x1: probe.first.t, y0: 0, y1: 1, line: { color: "rgba(255,255,255,0.6)", width: 1 } });
+      shapes.push({ type: "line", yref: "paper", x0: probe.first.t, x1: probe.first.t, y0: 0, y1: 1, line: { color: ink(0.6), width: 1 } });
     }
     if (probe?.second) {
-      shapes.push({ type: "line", yref: "paper", x0: probe.second.t, x1: probe.second.t, y0: 0, y1: 1, line: { color: "rgba(255,255,255,0.6)", width: 1, dash: "dash" } });
+      shapes.push({ type: "line", yref: "paper", x0: probe.second.t, x1: probe.second.t, y0: 0, y1: 1, line: { color: ink(0.6), width: 1, dash: "dash" } });
     }
     return shapes;
-  }, [probe]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- colours come from the theme (plotTheme)
+  }, [probe, theme]);
 
   const settleAnnotation = useMemo(() => {
     const metrics = probe?.metrics;
     if (!metrics || metrics.settling_time === null || metrics.settling_time === undefined) return [];
     return [{
       x: (metrics.step_time ?? 0) + metrics.settling_time, y: 1, xref: "x", yref: "paper", yanchor: "bottom",
-      text: "t_рег", showarrow: false, font: { size: 11, color: "#8a8a8a" },
+      text: "t_рег", showarrow: false, font: { size: 12, color: SECONDARY_COLOR },
     }];
-  }, [probe]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- colours come from the theme (plotTheme)
+  }, [probe, theme]);
 
   function placeCursor(event: PlotClick) {
     const t = event.points?.[0]?.x;

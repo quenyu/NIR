@@ -1,38 +1,80 @@
 /**
- * One theme for every Plotly chart, mirroring tokens.css: black paper, thin
- * grid, monospace ticks, white first series and a compact toolbar.
+ * One theme for every Plotly chart, mirroring tokens.css: transparent paper,
+ * thin grid, monospace ticks. Series are shades of grey told apart by their
+ * dash pattern, so a chart reads the same on screen and on a b/w printout.
+ * The colours are live bindings updated by syncPlotTheme() (features/theme).
  */
 
-// A lone signal is drawn white: the chart title names it, colour carries nothing.
-export const SINGLE_SERIES_COLOR = "#f2f2f2";
-// Two or more signals: fixed order, never cycled; validated for CVD separation on #000.
-export const SERIES_COLORS = [
-  "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767",
-];
+import type { Theme } from "../features/theme";
 
-export function seriesColor(index: number, count: number): string {
-  return count === 1 ? SINGLE_SERIES_COLOR : SERIES_COLORS[index % SERIES_COLORS.length];
+interface PlotPalette {
+  single: string;
+  series: string[];
+  secondary: string;
+  marker: string;
+  text: string;
+  grid: string;
+  axis: string;
+  hoverBg: string;
+  hoverText: string;
 }
 
-/** Highlighted marks (cursor, current poles). Red is kept for instability only. */
-export const MARKER_COLOR = "#7fb2ff";
-export const UNSTABLE_COLOR = "#ff3b30";
-const TEXT = "#8a8a8a";
-const GRID = "rgba(255,255,255,0.08)";
-const AXIS = "rgba(255,255,255,0.28)";
-const MONO = '"Geist Mono", "JetBrains Mono", ui-monospace, monospace';
+const PALETTES: Record<Theme, PlotPalette> = {
+  dark: {
+    single: "#ededed", series: ["#ededed", "#a1a1aa"], secondary: "#8b8b94", marker: "#ffffff",
+    text: "#a1a1aa", grid: "rgba(255,255,255,0.07)", axis: "#3a3a43", hoverBg: "#1c1c21", hoverText: "#ededed",
+  },
+  print: {
+    single: "#09090b", series: ["#09090b", "#52525b"], secondary: "#52525b", marker: "#09090b",
+    text: "#3f3f46", grid: "#e4e4e7", axis: "#a1a1aa", hoverBg: "#ffffff", hoverText: "#09090b",
+  },
+};
+
+const DASHES = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"];
+
+// A lone signal is drawn in the text colour: the chart title names it.
+export let SINGLE_SERIES_COLOR = PALETTES.dark.single;
+// The second, reference curve (target, comparison) in a lone-signal chart.
+export let SECONDARY_COLOR = PALETTES.dark.secondary;
+/** Highlighted marks (cursor, current poles). The muted red is kept for instability only. */
+export let MARKER_COLOR = PALETTES.dark.marker;
+export const UNSTABLE_COLOR = "#c2524a";
+let palette = PALETTES.dark;
+
+export function syncPlotTheme(theme: Theme): void {
+  palette = PALETTES[theme];
+  SINGLE_SERIES_COLOR = palette.single;
+  SECONDARY_COLOR = palette.secondary;
+  MARKER_COLOR = palette.marker;
+}
+
+/** The text colour at a given opacity: guides, bands and cursors in either theme. */
+export function ink(alpha: number): string {
+  return palette === PALETTES.print ? `rgba(9,9,11,${alpha})` : `rgba(237,237,237,${alpha})`;
+}
+
+export function seriesColor(index: number, count: number): string {
+  return count === 1 ? palette.single : palette.series[index % palette.series.length];
+}
+
+/** Two or more signals differ by dash pattern, in a fixed order. */
+export function seriesDash(index: number, count: number): string {
+  return count === 1 ? "solid" : DASHES[index % DASHES.length];
+}
+
+const MONO = '"JetBrains Mono", ui-monospace, monospace';
 
 export function axis(title: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    title: { text: title, standoff: 10, font: { family: MONO, size: 11, color: TEXT } },
-    gridcolor: GRID,
+    title: { text: title, standoff: 10, font: { family: MONO, size: 12, color: palette.text } },
+    gridcolor: palette.grid,
     gridwidth: 1,
-    zerolinecolor: AXIS,
-    linecolor: AXIS,
+    zerolinecolor: palette.axis,
+    linecolor: palette.axis,
     showline: true,
     mirror: true,
     ticks: "",
-    tickfont: { family: MONO, size: 11, color: TEXT },
+    tickfont: { family: MONO, size: 12, color: palette.text },
     automargin: true,
     ...extra,
   };
@@ -42,10 +84,10 @@ export function plotLayout(extra: Record<string, unknown> = {}): Record<string, 
   return {
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
-    font: { color: TEXT, family: MONO, size: 12 },
-    colorway: SERIES_COLORS,
+    font: { color: palette.text, family: MONO, size: 12 },
+    colorway: palette.series,
     hovermode: "x unified",
-    hoverlabel: { bgcolor: "#0a0a0a", bordercolor: AXIS, font: { family: MONO, size: 12, color: "#f2f2f2" } },
+    hoverlabel: { bgcolor: palette.hoverBg, bordercolor: palette.axis, font: { family: MONO, size: 12, color: palette.hoverText } },
     margin: { l: 56, r: 16, b: 48, t: 16 },
     showlegend: false,
     ...extra,

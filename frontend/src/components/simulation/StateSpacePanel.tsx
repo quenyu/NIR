@@ -104,7 +104,6 @@ export function StateSpacePanel({ result }: { result: SimulationResponse | null 
   const provenance = getModelProvenance(result.metadata);
   const stateMapping = getStateMapping(result.metadata);
   const indexBase = provenance?.index_base ?? 0;
-  const matrixDimensions = provenance?.matrix_dimensions;
   const loops = system.algebraic_loops ?? [];
 
   return (
@@ -130,28 +129,28 @@ export function StateSpacePanel({ result }: { result: SimulationResponse | null 
           <MatrixTable
             name="A"
             values={system.matrices.A}
-            meaning={matrixDimensions?.A?.explanation ?? "n × n · динамика состояний"}
+            meaning={"как состояние влияет само на себя"}
             rowLabels={system.state_labels}
             columnLabels={system.state_labels}
           />
           <MatrixTable
             name="B"
             values={system.matrices.B}
-            meaning={matrixDimensions?.B?.explanation ?? "n × m · влияние входов"}
+            meaning={"как вход влияет на изменение состояния"}
             rowLabels={system.state_labels}
             columnLabels={system.input_blocks}
           />
           <MatrixTable
             name="C"
             values={system.matrices.C}
-            meaning={matrixDimensions?.C?.explanation ?? "p × n · формирование выходов"}
+            meaning={"как состояние попадает на выход"}
             rowLabels={system.output_labels}
             columnLabels={system.state_labels}
           />
           <MatrixTable
             name="D"
             values={system.matrices.D}
-            meaning={matrixDimensions?.D?.explanation ?? "p × m · прямая передача"}
+            meaning={"какая часть входа сразу, без задержки, попадает на выход"}
             rowLabels={system.output_labels}
             columnLabels={system.input_blocks}
           />

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 /*
- * Animations are on by default, whatever the operating system says: the user
- * turns them off in the app ("⋯" → Анимации). Many Windows installations have
- * "Show animations" disabled, which would otherwise silence the whole interface.
+ * Decorative animations (text scramble, staggered entrances, the pole sphere's
+ * assembly) are off by default: the interface is meant to be calm. The user can
+ * turn them on in the app ("⋯" → Анимации); hover transitions always stay.
  * The choice is kept per browser and mirrored as `motion-off` on <html> for CSS.
  */
 const STORAGE_KEY = "cl-motion";
@@ -11,13 +11,13 @@ const EVENT = "cl-motion-change";
 
 function readSetting(): boolean {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) !== "off";
+    return window.localStorage.getItem(STORAGE_KEY) === "on";
   } catch {
-    return true;
+    return false;
   }
 }
 
-let enabled = typeof window === "undefined" ? true : readSetting();
+let enabled = typeof window === "undefined" ? false : readSetting();
 
 function applyClass() {
   if (typeof document !== "undefined") document.documentElement.classList.toggle("motion-off", !enabled);

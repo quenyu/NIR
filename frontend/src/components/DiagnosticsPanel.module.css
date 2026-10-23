@@ -25,7 +25,6 @@
   color: var(--text-soft);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -63,7 +62,6 @@
   background: transparent;
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .tab:hover {

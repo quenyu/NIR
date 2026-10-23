@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { MainPage } from "./pages/MainPage";
-import { SpaceBackdrop } from "./components/space/SpaceBackdrop";
 import { IntroSequence, introEnabled } from "./components/intro/IntroSequence";
 import { PALETTE_BLOCKS } from "./components/BlockPalette";
 import { EXAMPLE_PRESETS } from "./pages/examples";
@@ -11,7 +10,6 @@ export default function App() {
   const [showIntro, setShowIntro] = useState(() => introEnabled() && motionEnabled());
   return (
     <>
-      <SpaceBackdrop />
       <div className={`app-shell ${showIntro ? "is-hidden" : "is-revealed"}`}>
         <MainPage />
       </div>

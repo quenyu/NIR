@@ -17,10 +17,10 @@ body {
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
-  font-family: var(--font-mono);
-  font-size: var(--type-ui);
+  font-family: var(--font-sans);
+  font-size: var(--type-body);
   line-height: var(--leading);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -133,7 +133,6 @@ kbd {
   font-size: var(--type-micro);
   font-weight: 400;
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .hud-hairline {
@@ -252,7 +251,6 @@ kbd {
   background: transparent;
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .hud-tab:hover {
@@ -463,5 +461,4 @@ input[type="search"]::-webkit-search-cancel-button {
 .motion-off *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
 }

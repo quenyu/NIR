@@ -103,7 +103,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -184,7 +183,6 @@
   background: var(--text);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .hud-run:hover:not(:disabled) {
@@ -304,7 +302,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .palette-group__items {
@@ -416,7 +413,6 @@
   color: var(--text-soft);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .canvas-starter__grid {
@@ -748,7 +744,6 @@
   background: var(--surface-solid);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .scope-reopen:hover {
@@ -945,7 +940,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .system-analysis-grid {
@@ -968,7 +962,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .system-analysis-card strong {
@@ -1044,7 +1037,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .frequency-channel-picker select {
@@ -1085,7 +1077,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .state-space-view__identity strong {
@@ -1098,7 +1089,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .state-space-section__header p,
@@ -1191,7 +1181,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .model-verification-card__metrics,
@@ -1438,7 +1427,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 
 .hud-palette [cmdk-item] {
@@ -1804,7 +1792,6 @@
   color: var(--text-soft);
   font-size: var(--type-micro);
   letter-spacing: 0.16em;
-  text-transform: uppercase;
   white-space: nowrap;
   transform: translateX(-50%);
 }
@@ -2001,7 +1988,6 @@
   color: var(--text-muted);
   font-size: var(--type-micro);
   letter-spacing: var(--tracking-key);
-  text-transform: uppercase;
 }
 .loop-margins__summary dd {
   margin: 0;
@@ -2027,4 +2013,500 @@
   .loop-margins__summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ======================================================================
+ * Calm monochrome (overrides the HUD look above): opaque graphite panels,
+ * Inter for words, JetBrains Mono only for numbers and formulas, 8 px radii,
+ * one white accent. Both themes come from tokens.css.
+ * ==================================================================== */
+
+.control-app {
+  background: var(--bg);
+}
+
+.hud-header,
+.hud-statusbar,
+.library-pane,
+.hud-inspector,
+.scope-dock.is-open {
+  background: var(--surface);
+}
+
+.hud-header::after,
+.hud-statusbar::before {
+  animation: none;
+}
+
+.hud-key,
+.panel-kicker {
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Header */
+.hud-header {
+  padding: 0 16px;
+}
+
+.hud-header__right {
+  gap: 8px;
+}
+
+.hud-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.hud-brand__name {
+  color: var(--text);
+  font-size: var(--type-body);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hud-brand__project {
+  color: var(--text-soft);
+  font-size: var(--type-body);
+}
+
+.hud-brand__project::before {
+  content: "/";
+  margin-right: 12px;
+  color: var(--text-muted);
+}
+
+.hud-link {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--type-body);
+  transition: background-color var(--motion-fast) ease;
+}
+
+.hud-link:hover:not(:disabled),
+.hud-link[aria-pressed="true"] {
+  background: var(--surface-hover);
+  text-decoration: none;
+}
+
+.hud-link kbd {
+  font-size: 11px;
+}
+
+.hud-menu summary {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+}
+
+.hud-menu summary:hover,
+.hud-menu[open] summary {
+  background: var(--surface-hover);
+}
+
+.hud-menu__popover {
+  border-color: var(--hairline);
+  border-radius: var(--radius);
+  padding: 4px;
+  animation: none;
+}
+
+.hud-menu__popover button {
+  border-radius: var(--radius-small);
+  color: var(--text);
+  font-size: var(--type-body);
+}
+
+.hud-segment {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.hud-segment button {
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--text-soft);
+  background: transparent;
+  font-size: var(--type-small);
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.hud-segment button:hover {
+  color: var(--text);
+}
+
+.hud-segment button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.hud-divider {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--hairline);
+}
+
+.hud-status {
+  min-width: 140px;
+  color: var(--text-soft);
+  font-size: var(--type-body);
+  letter-spacing: 0;
+}
+
+.hud-status__dot {
+  width: 8px;
+  height: 8px;
+}
+
+.hud-status.is-running .hud-status__dot,
+.hud-status.is-validating .hud-status__dot {
+  background: var(--text-soft);
+  animation: none;
+}
+
+.hud-run {
+  height: 36px;
+  gap: 8px;
+  padding: 0 16px;
+  color: var(--text-inverse);
+  background: var(--accent);
+  font-size: var(--type-body);
+  font-weight: 600;
+  letter-spacing: 0;
+  transition: background-color var(--motion-fast) ease;
+}
+
+.hud-run:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: none;
+}
+
+.hud-crumbs button {
+  font-size: var(--type-small);
+}
+
+/* Library */
+.palette-group h3 {
+  margin: 16px 0 4px;
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.palette-item {
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius);
+  color: var(--text);
+  animation: none;
+  transition: background-color var(--motion-fast) ease;
+}
+
+.palette-item:hover {
+  background: var(--surface-hover);
+  transform: none;
+}
+
+.palette-item__symbol {
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-small);
+  background: var(--surface-solid);
+  font-family: var(--font-mono);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+
+.palette-item__copy strong {
+  font-size: var(--type-body);
+}
+
+.palette-item__formula {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--type-small);
+}
+
+/* Canvas */
+.canvas-wrapper {
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+
+.canvas-starter__motto {
+  color: var(--text-soft);
+  font-size: var(--type-body);
+  letter-spacing: 0;
+}
+
+.canvas-starter__grid {
+  gap: 12px;
+  border: 0;
+}
+
+.canvas-starter__grid button {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  animation: none;
+}
+
+.canvas-starter__grid strong {
+  font-weight: 500;
+}
+
+.react-flow__controls {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: var(--surface);
+  border-color: var(--hairline);
+}
+
+.react-flow__edge-path {
+  stroke-width: 1.25;
+}
+
+.react-flow__handle {
+  border-radius: 2px;
+}
+
+.block-node {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  animation: none;
+  transition: border-color var(--motion-fast) ease;
+}
+
+.block-node:hover {
+  border-color: var(--hairline-strong);
+}
+
+.react-flow__node.selected .block-node {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.react-flow__node.selected .block-node::before,
+.react-flow__node.selected .block-node::after {
+  display: none;
+}
+
+.react-flow__node.has-diagnostic-error .block-node {
+  border-color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+  background: var(--surface-solid);
+}
+
+.block-node__glyph {
+  font-family: var(--font-mono);
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+
+.block-node__title {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+}
+
+.block-node__summary {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-small);
+}
+
+.block-node__port-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.signal-spark {
+  fill: var(--text);
+  filter: none;
+}
+
+/* Results */
+.scope-panel__header {
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.scope-tabs {
+  gap: 4px;
+}
+
+.hud-tab {
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--text-soft);
+  font-size: var(--type-body);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.hud-tab.is-active::after {
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.scope-content {
+  padding: 16px 24px;
+}
+
+.system-analysis-card,
+.matrix-card,
+.model-verification-card,
+.frequency-plot-card,
+.loop-margins {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  animation: none;
+}
+
+.system-analysis-card,
+.matrix-card,
+.model-verification-card {
+  padding: 12px 16px;
+}
+
+.system-analysis-card > span {
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+  letter-spacing: 0;
+}
+
+.system-analysis-card strong {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.matrix-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.matrix-card header strong {
+  font-family: var(--font-mono);
+  font-size: var(--type-title);
+  font-weight: 500;
+}
+
+.matrix-card header small {
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+}
+
+.matrix-table td {
+  font-family: var(--font-mono);
+  font-size: var(--type-body);
+}
+
+.matrix-table th {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.model-provenance__table {
+  border: 1px solid var(--hairline);
+}
+
+.model-provenance__table th {
+  background: var(--surface-solid);
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: var(--type-small);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.model-provenance h3,
+.state-space-view__identity > span,
+.frequency-channel-picker span,
+.scope-analysis h3 {
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--type-body);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Inspector */
+.hud-inspector {
+  animation: none;
+}
+
+.hud-inspector__header strong {
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+
+.hud-inspector__fields > * {
+  animation: none;
+}
+
+.hud-inspector__hint {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+}
+
+.hud-inspector__hint strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+
+.hud-inspector__hint p {
+  color: var(--text-soft);
+  font-size: var(--type-body);
+}
+
+/* Status line */
+.hud-statusbar {
+  gap: 16px;
+  padding: 0 16px;
+  font-size: var(--type-small);
+}
+
+.hud-statusbar .hud-key {
+  font-size: var(--type-small);
+}
+
+/* Toasts and dialogs */
+.hud-toast,
+.modal,
+.hud-palette {
+  border-radius: var(--radius);
 }

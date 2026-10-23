@@ -11,9 +11,10 @@ const MAX_WAIT = 12; // a step that never answers does not hold the intro longer
 export function introEnabled(): boolean {
   try {
     if (new URLSearchParams(window.location.search).get("intro") === "0") return false;
-    return window.localStorage.getItem(INTRO_KEY) !== "off";
+    // Off unless the user turned it on: the workspace opens straight away.
+    return window.localStorage.getItem(INTRO_KEY) === "on";
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -58,7 +59,7 @@ export function IntroSequence({ blockTypeCount, exampleCount, onDone }: IntroSeq
     { title: "Библиотека блоков", run: async () => formatRussianCount(blockTypeCount, "тип", "типа", "типов") },
     { title: "Готовые схемы", run: async () => String(exampleCount) },
     { title: "Проекты на сервере", run: async () => formatRussianCount((await listServerProjects()).length, "проект", "проекта", "проектов") },
-    { title: "Шрифты интерфейса", run: async () => { await document.fonts.ready; return "Geist Mono · Geist Sans"; } },
+    { title: "Шрифты интерфейса", run: async () => { await document.fonts.ready; return "Inter · JetBrains Mono"; } },
     { title: "Графическое ядро", run: async () => (canvasRef.current?.getContext("webgl2") || canvasRef.current?.getContext("webgl") ? "WebGL" : "WebGL недоступен") },
   ];
 

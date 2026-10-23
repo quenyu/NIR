@@ -2,80 +2,121 @@
   color-scheme: dark;
 
   /*
-   * Deep space: a black-blue ground with a nebula and stars (SpaceBackdrop),
-   * translucent panels over it, cool white text and one cool glow for live
-   * things (progress, active lines, the sphere's atmosphere). Red is reserved
-   * for instability: poles with Re > 0 and errors.
+   * Calm monochrome: a near-black ground, opaque graphite panels, white text
+   * and one white accent (the run button, the selection). Status colours are
+   * muted and appear only as a dot or an icon next to words, never as a fill.
+   * [data-theme="print"] swaps the same tokens for black on white so that
+   * screenshots print cleanly on a black-and-white printer.
    */
-  --bg: #01030a;
-  --surface: rgba(2, 6, 16, 0.72);        /* panels over the backdrop */
-  --surface-solid: #040a1a;               /* blocks, fields, menus */
-  --surface-raised: #060d20;              /* popovers, dialogs */
-  --surface-hover: rgba(170, 196, 255, 0.06);
-  --surface-active: rgba(170, 196, 255, 0.1);
-  --canvas: transparent;
+  --bg: #0e0e10;
+  --surface: #16161a;                /* panels */
+  --surface-solid: #1c1c21;          /* blocks, cards, fields */
+  --surface-raised: #1c1c21;         /* popovers, dialogs */
+  --surface-hover: #222228;
+  --surface-active: #26262c;
+  --canvas: #0e0e10;
+  --canvas-dot: #27272e;
 
-  --text: #eef3ff;             /* 18:1 on --bg */
-  --text-soft: #b4bfd6;        /* 11:1 */
-  --text-muted: #7f8aa3;       /* 5.6:1 */
-  --text-inverse: #01030a;
+  --text: #ededed;
+  --text-soft: #a1a1aa;
+  --text-muted: #8b8b94;             /* still 4.5:1 on panels */
+  --text-inverse: #0e0e10;
 
-  --hairline: rgba(170, 196, 255, 0.16);
-  --hairline-strong: rgba(190, 210, 255, 0.32);
-  --hairline-focus: rgba(200, 220, 255, 0.62);
+  --hairline: #2a2a31;
+  --hairline-strong: #3a3a43;
+  --hairline-focus: #a1a1aa;
 
-  --accent: #eef3ff;
-  --glow: #7fb2ff;
-  --glow-soft: rgba(127, 178, 255, 0.35);
-  --marker: #ff3b30;
+  --accent: #ffffff;
+  --accent-hover: #d4d4d8;
+  --glow: #a1a1aa;
+  --glow-soft: transparent;
+  --marker: #ffffff;
 
   /* Status: always together with a label. */
-  --success: #6fbf73;
-  --warning: #d9b44a;
-  --danger: #ff5a4f;
-  --success-soft: rgba(111, 191, 115, 0.1);
-  --warning-soft: rgba(217, 180, 74, 0.1);
-  --danger-soft: rgba(255, 90, 79, 0.1);
+  --success: #5e9e73;
+  --warning: #b58b3a;
+  --danger: #c2524a;
+  --success-soft: rgba(94, 158, 115, 0.08);
+  --warning-soft: rgba(181, 139, 58, 0.08);
+  --danger-soft: rgba(194, 82, 74, 0.08);
 
   /* Signals on the canvas. */
-  --edge-signal: rgba(190, 210, 255, 0.42);
+  --edge-signal: #8b8b94;
   --edge-selected: #ffffff;
   --edge-invalid: var(--danger);
 
-  /*
-   * Data series. A lone signal is white (--text); two or more use this fixed,
-   * CVD-validated order (mirrored in plotTheme.ts).
-   */
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --series-4: #c98500;
-  --series-5: #d55181;
-  --series-6: #008300;
-  --series-7: #9085e9;
-  --series-8: #e66767;
+  /* Data series: shades of grey, told apart by dash pattern (plotTheme.ts). */
+  --series-1: #ededed;
+  --series-2: #a1a1aa;
+  --series-3: #ededed;
+  --series-4: #a1a1aa;
+  --series-5: #ededed;
+  --series-6: #a1a1aa;
+  --series-7: #ededed;
+  --series-8: #a1a1aa;
 
-  --radius: 2px;
+  --radius: 8px;
+  --radius-small: 6px;
 
-  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
-  --font-sans: "Geist Sans", "Geist", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Inter", "IBM Plex Sans", system-ui, sans-serif;
 
-  --type-micro: 11px;   /* uppercase keys, tracking .09em */
-  --type-small: 12px;
-  --type-ui: 13px;
-  --type-body: 14px;
+  --type-micro: 12px;
+  --type-small: 13px;
+  --type-ui: 14px;
+  --type-body: 15px;
   --type-value: 15px;
-  --type-big: 32px;     /* light weight, numbers */
-  --tracking-key: 0.09em;
-  --leading: 1.5;
+  --type-title: 17px;
+  --type-big: 28px;
+  --tracking-key: 0;
+  --leading: 1.45;
 
-  --header-height: 64px;
-  --status-height: 36px;
-  --library-width: 248px;
-  --inspector-width: 320px;
+  --header-height: 56px;
+  --status-height: 30px;
+  --library-width: 260px;
+  --inspector-width: 300px;
 
   --ease-out: cubic-bezier(0.2, 0.7, 0.1, 1);
-  --motion-fast: 120ms;
-  --motion-normal: 240ms;
-  --motion-slow: 900ms;
+  --motion-fast: 150ms;
+  --motion-normal: 150ms;
+  --motion-slow: 300ms;
+}
+
+:root[data-theme="print"] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-hover: #f4f4f5;
+  --surface-active: #e4e4e7;
+  --canvas: #ffffff;
+  --canvas-dot: #d4d4d8;
+
+  --text: #09090b;
+  --text-soft: #3f3f46;
+  --text-muted: #52525b;
+  --text-inverse: #ffffff;
+
+  --hairline: #d4d4d8;
+  --hairline-strong: #a1a1aa;
+  --hairline-focus: #3f3f46;
+
+  --accent: #09090b;
+  --accent-hover: #27272a;
+  --glow: #3f3f46;
+  --marker: #09090b;
+
+  --edge-signal: #18181b;
+  --edge-selected: #000000;
+
+  --series-1: #09090b;
+  --series-2: #52525b;
+  --series-3: #09090b;
+  --series-4: #52525b;
+  --series-5: #09090b;
+  --series-6: #52525b;
+  --series-7: #09090b;
+  --series-8: #52525b;
 }

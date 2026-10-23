@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { blockTypeLabel, normalizedSigns, type BlockNodeData } from "../../types/diagram";
+import { blockTypeLabel, normalizedSigns, type BlockNodeData, type BlockType } from "../../types/diagram";
 import { UiIcon } from "../UiIcon";
 import { sliderRange, UNSLIDABLE_PARAMETERS, type SliderRange } from "../../features/parameterRange";
-import { ScrambleText } from "../../features/motion/ScrambleText";
 
 interface WorkspaceInspectorProps {
   node: BlockNodeData;
@@ -38,6 +37,23 @@ const PARAMETER_LABELS: Record<string, string> = {
 };
 
 const HIDDEN_PARAMETERS = new Set(["diagram", "layout", "signs"]);
+
+/** What the block does, in plain words, under its parameters. */
+const BLOCK_HINTS: Record<BlockType, string> = {
+  StepInput: "Подаёт на схему сигнал, который в момент t₀ скачком меняется с нуля на A. Так проверяют, как система отвечает на резкую смену задания.",
+  Gain: "Умножает входной сигнал на K. Чем больше K, тем сильнее реакция на ошибку, но слишком большое K может раскачать систему.",
+  Sum: "Складывает входы с указанными знаками. В контуре с обратной связью из задания вычитается выход — получается ошибка.",
+  Integrator: "Накапливает входной сигнал: выход растёт, пока на входе не ноль. Убирает установившуюся ошибку.",
+  FirstOrderLag: "Плавно догоняет входной сигнал. За время T выход проходит примерно 63 % пути до нового значения.",
+  SecondOrderOscillator: "Отвечает на скачок колебаниями с частотой около ω₀. Чем меньше затухание ζ, тем дольше они не стихают.",
+  TransferFunction: "Звено, заданное передаточной функцией N(s)/D(s): коэффициенты числителя и знаменателя через запятую, от старшей степени s.",
+  ButterworthLPF: "Фильтр нижних частот: пропускает медленные изменения сигнала и подавляет быстрые, выше частоты среза.",
+  PIDController: "Регулятор: реагирует на ошибку сейчас (Kp), на накопленную ошибку (Ki) и на скорость её изменения (Kd).",
+  Subsystem: "Группа блоков, свёрнутая в один. Двойной щелчок открывает её схему.",
+  SubsystemInput: "Вход подсистемы: через него сигнал снаружи попадает внутрь.",
+  SubsystemOutput: "Выход подсистемы: через него сигнал изнутри уходит наружу.",
+  Scope: "Записывает сигнал на входе и показывает его во вкладке «Графики».",
+};
 function roundToStep(value: number, step: number): number {
   const digits = Math.max(0, -Math.floor(Math.log10(step)));
   return Number(value.toFixed(Math.min(digits, 10)));
@@ -153,7 +169,7 @@ export function WorkspaceInspector({
       <header className="hud-inspector__header">
         <div>
           <span className="hud-key">{blockTypeLabel(node.blockType)}</span>
-          <strong title={title}><ScrambleText text={title} /></strong>
+          <strong title={title}>{title}</strong>
           {title !== node.blockId && <span className="hud-inspector__id">{node.blockId}</span>}
         </div>
         <button type="button" className="hud-icon-button" onClick={onClose} aria-label="Закрыть параметры" title="Закрыть (Esc)">
@@ -219,6 +235,13 @@ export function WorkspaceInspector({
           </div>
         )}
         {message && <p className="hud-note is-warning" role="alert">{message}</p>}
+        <div className="hud-inspector__hint">
+          <UiIcon name="info" />
+          <div>
+            <strong>Что делает этот блок</strong>
+            <p>{BLOCK_HINTS[node.blockType]}</p>
+          </div>
+        </div>
       </div>
 
       <div className="hud-inspector__actions">

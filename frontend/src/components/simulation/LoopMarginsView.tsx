@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "../../features/theme";
 import Plot from "../Plot";
-import { axis, MARKER_COLOR, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, UNSTABLE_COLOR } from "../plotTheme";
+import { axis, ink, MARKER_COLOR, plotLayout, SINGLE_SERIES_COLOR, STATIC_PLOT_CONFIG, UNSTABLE_COLOR } from "../plotTheme";
 import { analyzeLoop, ApiError, errorText, type LoopCut, type LoopResponse } from "../../api/client";
 import type { Diagram } from "../../types/diagram";
 
@@ -23,6 +24,7 @@ interface LoopMarginsViewProps {
  * loop is broken, the server returns L(jω), the margins and the Nyquist criterion.
  */
 export function LoopMarginsView({ diagram }: LoopMarginsViewProps) {
+  useTheme(); // re-render the charts when the theme changes
   const [candidates, setCandidates] = useState<LoopCut[]>([]);
   const [chosen, setChosen] = useState("");
   const [loop, setLoop] = useState<LoopResponse | null>(null);
@@ -173,7 +175,7 @@ export function LoopMarginsView({ diagram }: LoopMarginsViewProps) {
                   xaxis: axis("ω, рад/с", { type: "log" }),
                   yaxis: axis("L(ω), дБ"),
                   shapes: [
-                    { type: "line", xref: "paper", x0: 0, x1: 1, y0: 0, y1: 0, line: { color: "rgba(200,220,255,.4)", width: 1, dash: "dot" } },
+                    { type: "line", xref: "paper", x0: 0, x1: 1, y0: 0, y1: 0, line: { color: ink(0.4), width: 1, dash: "dot" } },
                     ...(loop.gain_crossover ? [{ type: "line", x0: loop.gain_crossover, x1: loop.gain_crossover, yref: "paper", y0: 0, y1: 1, line: { color: MARKER_COLOR, width: 1, dash: "dot" } }] : []),
                   ],
                 }}
@@ -191,7 +193,7 @@ export function LoopMarginsView({ diagram }: LoopMarginsViewProps) {
                   xaxis: axis("ω, рад/с", { type: "log" }),
                   yaxis: axis("φ(ω), °"),
                   shapes: [
-                    { type: "line", xref: "paper", x0: 0, x1: 1, y0: -180, y1: -180, line: { color: "rgba(200,220,255,.4)", width: 1, dash: "dot" } },
+                    { type: "line", xref: "paper", x0: 0, x1: 1, y0: -180, y1: -180, line: { color: ink(0.4), width: 1, dash: "dot" } },
                     ...(loop.phase_crossover ? [{ type: "line", x0: loop.phase_crossover, x1: loop.phase_crossover, yref: "paper", y0: 0, y1: 1, line: { color: MARKER_COLOR, width: 1, dash: "dot" } }] : []),
                   ],
                 }}

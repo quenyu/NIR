@@ -4,6 +4,7 @@ import { UiIcon } from "../UiIcon";
 import { ScrambleText } from "../../features/motion/ScrambleText";
 import { setMotionEnabled, useMotionEnabled } from "../../features/motion/useReducedMotion";
 import { introEnabled, setIntroEnabled } from "../intro/IntroSequence";
+import { setTheme, useTheme } from "../../features/theme";
 
 export interface HierarchyCrumb {
   depth: number;
@@ -60,6 +61,7 @@ export function WorkspaceChrome({
 }: WorkspaceChromeProps) {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const motion = useMotionEnabled();
+  const theme = useTheme();
   const [intro, setIntro] = useState(introEnabled);
   const commandMenuRef = useRef<HTMLDetailsElement | null>(null);
 
@@ -96,7 +98,7 @@ export function WorkspaceChrome({
     <header className="hud-header">
       <div className="hud-header__left">
         <div className="hud-brand">
-          <ScrambleText className="hud-key" text="Control Lab" />
+          <span className="hud-brand__name">Control Lab</span>
           <span className="hud-brand__project" title={projectTitle || "Проект не сохранён на сервере"}>
             {projectTitle || "Новая схема"}
           </span>
@@ -129,10 +131,15 @@ export function WorkspaceChrome({
       </div>
 
       <div className="hud-header__right">
-        <span className={`hud-status is-${diagnosticsState}`} role="status" aria-live="polite" data-testid="run-status">
-          <span className="hud-status__dot" aria-hidden="true" />
-          <ScrambleText text={status} />
-        </span>
+        <div className="hud-segment" role="group" aria-label="Тема оформления">
+          <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")} data-testid="theme-dark">
+            Тёмная
+          </button>
+          <button type="button" aria-pressed={theme === "print"} onClick={() => setTheme("print")} data-testid="theme-print">
+            Для печати
+          </button>
+        </div>
+        <span className="hud-divider" aria-hidden="true" />
         <button type="button" className="hud-link" onClick={onToggleLibrary} aria-pressed={isLibraryOpen} title="Библиотека блоков (B)">
           Блоки
         </button>
@@ -183,8 +190,13 @@ export function WorkspaceChrome({
             </button>
           </div>
         </details>
+        <span className="hud-divider" aria-hidden="true" />
+        <span className={`hud-status is-${diagnosticsState}`} role="status" aria-live="polite" data-testid="run-status">
+          <span className="hud-status__dot" aria-hidden="true" />
+          <ScrambleText text={status} />
+        </span>
         <button type="button" className={`hud-run ${busy ? "is-busy" : ""}`} onClick={onRun} data-testid="simulate-button" disabled={runDisabled} title="Запустить (Ctrl+Enter)">
-          <span className="hud-orbit" aria-hidden="true"><span /></span>
+          <svg className="hud-run__icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5l15 8.5-15 8.5z" fill="currentColor" /></svg>
           {busy ? "Расчёт…" : "Запустить"}
         </button>
       </div>

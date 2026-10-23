@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "../../features/theme";
 import Plot from "../Plot";
-import { axis, MARKER_COLOR, plotLayout, STATIC_PLOT_CONFIG, UNSTABLE_COLOR } from "../plotTheme";
+import { axis, ink, MARKER_COLOR, plotLayout, STATIC_PLOT_CONFIG, UNSTABLE_COLOR } from "../plotTheme";
 import { ApiError, errorText, sweepParameter, type SweepResponse } from "../../api/client";
 import { sliderRange, UNSLIDABLE_PARAMETERS } from "../../features/parameterRange";
 import type { Diagram } from "../../types/diagram";
@@ -44,6 +45,7 @@ function candidatesOf(diagram: Diagram | null): Candidate[] {
 
 /** Poles of the assembled model and their path while one block parameter sweeps its range. */
 export function PoleMap({ poles, diagram, focusBlockId }: PoleMapProps) {
+  const theme = useTheme();
   const candidates = useMemo(() => candidatesOf(diagram), [diagram]);
   const [chosen, setChosen] = useState<string>("");
   const [sweep, setSweep] = useState<SweepResponse | null>(null);
@@ -97,7 +99,8 @@ export function PoleMap({ poles, diagram, focusBlockId }: PoleMapProps) {
       }
     }
     return { x, y, text };
-  }, [sweep]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- colours come from the theme (plotTheme)
+  }, [sweep, theme]);
 
   const allX = [...locus.x, ...poles.map((pole) => pole.real), 0];
   const allY = [...locus.y, ...poles.map((pole) => pole.imag), 0];
@@ -127,7 +130,7 @@ export function PoleMap({ poles, diagram, focusBlockId }: PoleMapProps) {
         data={[
           {
             x: locus.x, y: locus.y, text: locus.text, type: "scatter", mode: "markers", name: "годограф",
-            marker: { size: 3, color: "rgba(242, 242, 242, 0.55)" },
+            marker: { size: 3, color: ink(0.55) },
             hovertemplate: "%{text}<br>%{x:.4g} %{y:+.4g}j<extra></extra>",
           },
           {
@@ -143,7 +146,7 @@ export function PoleMap({ poles, diagram, focusBlockId }: PoleMapProps) {
           shapes: [
             {
               type: "rect", xref: "x", yref: "paper", x0: 0, x1: xRange[1], y0: 0, y1: 1,
-              fillcolor: "rgba(255, 90, 79, 0.06)", line: { width: 0 }, layer: "below",
+              fillcolor: "rgba(194, 82, 74, 0.06)", line: { width: 0 }, layer: "below",
             },
           ],
         }}
