@@ -1,18 +1,19 @@
-"""Верификация подсистемы построения модели: программа против MATLAB/GNU Octave (курсовой проект).
+"""Верификация подсистемы построения модели: программа против Simulink и MATLAB/GNU Octave (курсовой проект).
 
     cd backend && python scripts/kp_verification.py
 
 Для каждой схемы из kp_examples.py:
 
-1. программа строит модель A, B, C, D по схеме (то, что делает вкладка «Матрицы»);
-2. программа моделирует переходный процесс тем же путём, что и кнопка «Запустить» (RK45);
-3. скрипт verification/<имя>.m независимо строит передаточную функцию сворачиванием структурной
-   схемы в MATLAB/Octave (tf, feedback) и считает переходный процесс через lsim;
-4. сравниваются коэффициенты передаточной функции, полюса и график y(t).
+1. программа строит модель A, B, C, D по схеме (то, что делает вкладка «Матрицы») и моделирует
+   переходный процесс тем же путём, что и кнопка «Запустить» (RK45);
+2. та же схема собрана из блоков в Simulink (verification/simulink/kp_simulink.m): сигнал его
+   осциллографа — docs/study/simulink_*.csv — накладывается на график программы;
+3. скрипты verification/<имя>.m независимо строят передаточную функцию сворачиванием структурной
+   схемы в MATLAB/Octave (tf, feedback): сравниваются коэффициенты и полюса;
+4. дополнительно та же схема собрана в Xcos (verification/xcos, бесплатный аналог Simulink).
 
-Если Octave установлен, .m-скрипты запускаются заново; иначе берутся их сохранённые результаты
-docs/study/octave_*.csv. Пишет docs/study/kp_verification*.csv, docs/figures/kp_verif_*.png и
-сводку docs/kp_verification.md.
+Если Octave установлен, .m-скрипты запускаются заново; иначе берутся сохранённые docs/study/octave_*.csv.
+Пишет docs/study/kp_verification*.csv, docs/figures/kp_verif_*.png и сводку docs/kp_verification.md.
 """
 
 from __future__ import annotations
@@ -66,6 +67,24 @@ def read_octave(name: str) -> dict[str, np.ndarray]:
     return rows
 
 
+def read_curve(prefix: str, name: str) -> tuple[np.ndarray, np.ndarray] | None:
+    path = STUDY / f"{prefix}_{name}.csv"
+    if not path.exists():
+        return None
+    data = np.loadtxt(path, delimiter=",")
+    return data[:, 0], data[:, 1]
+
+
+def simulate(diagram: dict, t: np.ndarray) -> np.ndarray:
+    response = simulate_request(SimulationRequest.model_validate(
+        {"diagram": diagram, "t_start": 0.0, "t_end": float(t[-1]), "t_eval": t.tolist(), "solver": "solve_ivp"}))
+    return np.array(next(iter(response.outputs.values())))
+
+
+def deviation(ours: np.ndarray, theirs: np.ndarray) -> str:
+    return f"{float(np.max(np.abs(ours - theirs))) / float(np.max(np.abs(theirs))):.1e}"
+
+
 def program_transfer(model) -> tuple[np.ndarray, np.ndarray]:
     num, den = ss2tf(model.a, model.b, model.c, model.d)
     num = np.trim_zeros(num[0] / den[0], "f")
@@ -96,10 +115,10 @@ def fmt_poly(coefficients: np.ndarray) -> str:
 
 def plot(name: str, title: str, t: np.ndarray, ours: np.ndarray, theirs: np.ndarray, unit: str) -> None:
     figure, axis = plt.subplots(figsize=(7.5, 3.6))
-    axis.plot(t, ours, color="black", lw=1.8, label="Control Lab (моделирование, RK45)")
+    axis.plot(t, ours, color="black", lw=1.8, label="Control Lab (осциллограф)")
     step = max(1, len(t) // 40)
     axis.plot(t[::step], theirs[::step], "o", color="black", mfc="white", ms=6, lw=0,
-              label="MATLAB/Octave (lsim)")
+              label="Simulink (Scope)")
     axis.set_xlabel("t, с")
     axis.set_ylabel(unit)
     axis.grid(True, color="0.85", lw=0.6)
@@ -116,24 +135,29 @@ def verify() -> tuple[list[dict], dict[str, dict]]:
         model = compile_model(Diagram.model_validate(diagram)).model
         num, den = program_transfer(model)
         octave = read_octave(name)
-        t = octave["t"]
-        response = simulate_request(SimulationRequest.model_validate(
-            {"diagram": diagram, "t_start": 0.0, "t_end": float(t[-1]), "t_eval": t.tolist(), "solver": "solve_ivp"}))
-        ours = np.array(next(iter(response.outputs.values())))
         poles = np.linalg.eigvals(model.a)
-        span = float(np.max(np.abs(octave["y"])))
-        summary.append({
+        row = {
             "схема": title,
             "порядок n": model.state_dimension,
             "блоков": len(compile_model(Diagram.model_validate(diagram)).flat.blocks),
             "знаменатель: макс. отн. расхождение": f"{relative(den, octave['den']):.1e}",
             "числитель: макс. отн. расхождение": f"{relative(num, octave['num']):.1e}",
             "полюса: макс. отн. расхождение": f"{match_poles(poles, octave['poles']):.1e}",
-            "y(t): макс. отклонение / макс. |y|": f"{float(np.max(np.abs(ours - octave['y']))) / span:.1e}",
-        })
-        details[name] = {"title": title, "model": model, "num": num, "den": den, "octave": octave,
-                         "poles": poles, "t": t, "y": ours}
-        plot(name, title, t, ours, octave["y"], "Y, м" if name == "egsp" else "y(t)")
+        }
+        curves = {}
+        for prefix, column in (("simulink", "Simulink"), ("xcos", "Xcos"), ("octave", "Octave lsim")):
+            curve = read_curve(prefix, name) if prefix != "octave" else (octave["t"], octave["y"])
+            if curve is None:
+                row[f"y(t) против {column}"] = "нет данных"
+                continue
+            t, theirs = curve
+            ours = simulate(diagram, t)
+            row[f"y(t) против {column}"] = deviation(ours, theirs)
+            curves[prefix] = (t, ours, theirs)
+        summary.append(row)
+        details[name] = {"title": title, "model": model, "num": num, "den": den, "octave": octave, "poles": poles}
+        t, ours, theirs = curves.get("simulink", curves["octave"])
+        plot(name, title, t, ours, theirs, "Y, м" if name == "egsp" else "y(t)")
     return summary, details
 
 
