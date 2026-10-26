@@ -1,4 +1,5 @@
 import type { BlockType, Diagram, DiagramBlock } from "../types/diagram";
+import { KP_PRESETS } from "./kpExamples";
 
 export interface ExamplePreset {
   id: string;
@@ -1131,7 +1132,8 @@ export const EXAMPLE_PRESETS: ExamplePreset[] = [
       plant: { x: 700, y: 140 },
       scope: { x: 1300, y: 140 }
     }
-  }
+  },
+  ...KP_PRESETS
 ];
 
 export interface StarterPreset {
@@ -1143,6 +1145,9 @@ export interface StarterPreset {
 }
 
 const STARTER_DEFINITIONS = [
+  { id: "kp_egsp", title: "ЭГСП 8-го порядка", category: "Эталонная модель", description: "Электрогидравлический следящий привод: 8 состояний, четыре обратные связи" },
+  { id: "kp_crossed", title: "Перекрёстные обратные связи", category: "Структура", description: "Два перекрывающихся контура и главная обратная связь" },
+  { id: "kp_pi", title: "Контур с ПИ-регулятором", category: "Регулятор", description: "ПИ-регулятор и объект из двух инерционных звеньев" },
   { id: "unstablePlantFeedback", title: "Стабилизация неустойчивого объекта", category: "Обратная связь", description: "1/(s−1) и П-регулятор: устойчивость замкнутой системы" },
   { id: "thirdOrderLoop", title: "Контур 3-го порядка", category: "Устойчивость", description: "K/(s(s+1)(s+2)): запасы по амплитуде и фазе, Найквист" },
   { id: "firstOrder", title: "Звено 1-го порядка", category: "Базовая модель", description: "Переходная характеристика K/(Ts+1)" },

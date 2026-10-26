@@ -59,6 +59,7 @@ import { UiIcon } from "../components/UiIcon";
 import { ScrambleText } from "../features/motion/ScrambleText";
 import { LOOP_CUT_EVENT } from "../components/simulation/LoopMarginsView";
 import { emitRunWave } from "../components/space/SpaceBackdrop";
+import { useTheme } from "../features/theme";
 import { WorkspaceInspector } from "../components/workspace/WorkspaceInspector";
 import { WorkspaceChrome } from "../components/workspace/WorkspaceChrome";
 import { StatusBar } from "../components/workspace/StatusBar";
@@ -167,6 +168,7 @@ const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
 };
 
 function ModelingWorkspace() {
+  const theme = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState<BlockNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -1508,9 +1510,9 @@ function ModelingWorkspace() {
                 minZoom={0.18}
                 maxZoom={1.35}
               >
-                {nodes.length > 8 && <MiniMap pannable zoomable maskColor="rgba(0, 0, 0, 0.9)" nodeColor="rgba(255, 255, 255, 0.35)" />}
+                {nodes.length > 8 && <MiniMap pannable zoomable maskColor={theme === "print" ? "rgba(255, 255, 255, 0.8)" : "rgba(0, 0, 0, 0.8)"} nodeColor={theme === "print" ? "rgba(0, 0, 0, 0.35)" : "rgba(255, 255, 255, 0.35)"} />}
                 <Controls showInteractive={false} />
-                <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255, 255, 255, 0.16)" />
+                <Background variant={BackgroundVariant.Dots} gap={24} size={1} color={theme === "print" ? "rgba(0, 0, 0, 0.16)" : "rgba(255, 255, 255, 0.16)"} />
               </ReactFlow>
             </div>
             {notice && (
