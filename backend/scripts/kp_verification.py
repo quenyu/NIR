@@ -9,8 +9,7 @@
 2. та же схема собрана из блоков в Simulink (verification/simulink/kp_simulink.m): сигнал его
    осциллографа — docs/study/simulink_*.csv — накладывается на график программы;
 3. скрипты verification/<имя>.m независимо строят передаточную функцию сворачиванием структурной
-   схемы в MATLAB/Octave (tf, feedback): сравниваются коэффициенты и полюса;
-4. дополнительно та же схема собрана в Xcos (verification/xcos, бесплатный аналог Simulink).
+   схемы в MATLAB/Octave (tf, feedback): сравниваются коэффициенты и полюса.
 
 Если Octave установлен, .m-скрипты запускаются заново; иначе берутся сохранённые docs/study/octave_*.csv.
 Пишет docs/study/kp_verification*.csv, docs/figures/kp_verif_*.png и сводку docs/kp_verification.md.
@@ -67,11 +66,10 @@ def read_octave(name: str) -> dict[str, np.ndarray]:
     return rows
 
 
-def read_curve(prefix: str, name: str) -> tuple[np.ndarray, np.ndarray] | None:
-    path = STUDY / f"{prefix}_{name}.csv"
-    if not path.exists():
-        return None
-    data = np.loadtxt(path, delimiter=",")
+def read_simulink(name: str) -> tuple[np.ndarray, np.ndarray]:
+    """Сигнал осциллографа Scope из Simulink: столбцы t, y (файл пишет kp_simulink.m)."""
+
+    data = np.loadtxt(STUDY / f"simulink_{name}.csv", delimiter=",")
     return data[:, 0], data[:, 1]
 
 
@@ -136,28 +134,21 @@ def verify() -> tuple[list[dict], dict[str, dict]]:
         num, den = program_transfer(model)
         octave = read_octave(name)
         poles = np.linalg.eigvals(model.a)
-        row = {
+        t, simulink = read_simulink(name)
+        ours = simulate(diagram, t)                     # осциллограф Control Lab на сетке Simulink
+        summary.append({
             "схема": title,
             "порядок n": model.state_dimension,
             "блоков": len(compile_model(Diagram.model_validate(diagram)).flat.blocks),
+            # передаточная функция и полюса: программа против скриптов MATLAB/Octave
             "знаменатель: макс. отн. расхождение": f"{relative(den, octave['den']):.1e}",
             "числитель: макс. отн. расхождение": f"{relative(num, octave['num']):.1e}",
             "полюса: макс. отн. расхождение": f"{match_poles(poles, octave['poles']):.1e}",
-        }
-        curves = {}
-        for prefix, column in (("simulink", "Simulink"), ("xcos", "Xcos"), ("octave", "Octave lsim")):
-            curve = read_curve(prefix, name) if prefix != "octave" else (octave["t"], octave["y"])
-            if curve is None:
-                row[f"y(t) против {column}"] = "нет данных"
-                continue
-            t, theirs = curve
-            ours = simulate(diagram, t)
-            row[f"y(t) против {column}"] = deviation(ours, theirs)
-            curves[prefix] = (t, ours, theirs)
-        summary.append(row)
+            # осциллограммы: программа против Simulink
+            "y(t) против Simulink": deviation(ours, simulink),
+        })
         details[name] = {"title": title, "model": model, "num": num, "den": den, "octave": octave, "poles": poles}
-        t, ours, theirs = curves.get("simulink", curves["octave"])
-        plot(name, title, t, ours, theirs, "Y, м" if name == "egsp" else "y(t)")
+        plot(name, title, t, ours, simulink, "Y, м" if name == "egsp" else "y(t)")
     return summary, details
 
 

@@ -321,47 +321,55 @@ def _solve_algebraic_equations(
     return solution, loops
 
 
+def _step_source(block: Block) -> StepSource:
+    return StepSource(
+        block.id,
+        get_numeric_parameter(block.parameters, "amplitude", 1.0),
+        get_numeric_parameter(block.parameters, "t0", 0.0),
+    )
+
+
+def _scope_output(block: Block) -> ScopeOutput:
+    label = str(block.parameters.get("label") or "").strip() or block.id
+    reference = (
+        get_numeric_parameter(block.parameters, "reference", 0.0) if "reference" in block.parameters else None
+    )
+    return ScopeOutput(block.id, label, reference)
+
+
+def _check_inputs_match(block: Block, realization: BlockRealization) -> None:
+    if realization.b.shape[1] != len(block.input_ports):
+        raise ModelAssemblyError([f"Блок '{block.id}': число входов не совпадает с моделью звена."])
+
+
 def assemble_linear_model(flat: Diagram) -> LinearModel:
-    """Assemble a validated, flattened diagram into (A, B, C, D)."""
+    """Строит A, B, C, D по проверенной схеме, подсистемы уже раскрыты."""
 
     sources: list[StepSource] = []
     scopes: list[ScopeOutput] = []
-    source_index: dict[str, int] = {}
-    scope_index: dict[str, int] = {}
-
+    source_index: dict[str, int] = {}      # id источника -> столбец r
+    scope_index: dict[str, int] = {}       # id осциллографа -> строка y
     dynamic: list[tuple[Block, BlockRealization]] = []
-    output_index: dict[str, int] = {}      # block id -> row of y_b
-    input_offset: dict[str, int] = {}      # block id -> first row of u_b
+    output_index: dict[str, int] = {}      # id блока -> строка y_b
+    input_offset: dict[str, int] = {}      # id блока -> первая строка u_b
     states: list[StateEntry] = []
     total_inputs = 0
 
     for block in flat.blocks:
+        # 1. Источники и осциллографы: уравнений у них нет, они задают r и y
         if block.type in SOURCE_TYPES:
             source_index[block.id] = len(sources)
-            sources.append(
-                StepSource(
-                    block.id,
-                    get_numeric_parameter(block.parameters, "amplitude", 1.0),
-                    get_numeric_parameter(block.parameters, "t0", 0.0),
-                )
-            )
+            sources.append(_step_source(block))
             continue
         if block.type in SINK_TYPES:
-            label = str(block.parameters.get("label") or "").strip() or block.id
-            reference = (
-                get_numeric_parameter(block.parameters, "reference", 0.0)
-                if "reference" in block.parameters
-                else None
-            )
             scope_index[block.id] = len(scopes)
-            scopes.append(ScopeOutput(block.id, label, reference))
+            scopes.append(_scope_output(block))
             continue
 
+        # 2. Модель звена A_i, B_i, C_i, D_i (раздел 1.2)
         realization = block_realization(block)
-        if realization.b.shape[1] != len(block.input_ports):
-            raise ModelAssemblyError(
-                [f"Блок '{block.id}': число входов не совпадает с моделью звена."]
-            )
+        # проверка на совпадение числа входов блока и модели звена
+        _check_inputs_match(block, realization)
         output_index[block.id] = len(dynamic)
         input_offset[block.id] = total_inputs
         total_inputs += len(block.input_ports)
@@ -370,41 +378,42 @@ def assemble_linear_model(flat: Diagram) -> LinearModel:
             states.append(StateEntry(block.id, block.type, local, label))
         dynamic.append((block, realization))
 
+    # 3. Звенья вместе, без соединений: A_d, B_d, C_d, D_d (раздел 2.4)
     realizations = [realization for _, realization in dynamic]
     n = sum(r.order for r in realizations)
-    n_out = len(dynamic)
-    n_src = len(sources)
-    p = len(scopes)
-
+    n_out, n_src, p = len(dynamic), len(sources), len(scopes)
     a_d = _block_diagonal([r.a for r in realizations], n, n)
     b_d = _block_diagonal([r.b for r in realizations], n, total_inputs)
     c_d = _block_diagonal([r.c for r in realizations], n_out, n)
     d_d = _block_diagonal([r.d for r in realizations], n_out, total_inputs)
     x0 = np.concatenate([r.x0 for r in realizations]) if realizations else np.zeros(0)
 
+    # 4. Таблицы соединений: u_b = M y_b + N r, y = S_y y_b + S_r r (раздел 2.5)
     m = np.zeros((total_inputs, n_out))
     nr = np.zeros((total_inputs, n_src))
     s_y = np.zeros((p, n_out))
     s_r = np.zeros((p, n_src))
     blocks_by_id = {block.id: block for block in flat.blocks}
-
     for connection in flat.connections:
         target = blocks_by_id[connection.to_block]
-        if target.type in SINK_TYPES:
+        if target.type in SINK_TYPES:   # соединение ведёт в осциллограф
             row_matrix_y, row_matrix_r, row = s_y, s_r, scope_index[target.id]
-        else:
-            row = input_offset[target.id] + target.input_ports.index(connection.to_port)
+        else:                           # соединение ведёт во вход звена
+            port = target.input_ports.index(connection.to_port)
+            row = input_offset[target.id] + port
             row_matrix_y, row_matrix_r = m, nr
         if connection.from_block in source_index:
             row_matrix_r[row, source_index[connection.from_block]] = 1.0
         else:
             row_matrix_y[row, output_index[connection.from_block]] = 1.0
 
-    g = d_d @ m
+    # 5. Выходы из (I - D_d M) y_b = C_d x + D_d N r; петли проверяются (раздел 2.6)
     owners = [block.id for block, _ in dynamic]
-    y_solution, loops = _solve_algebraic_equations(g, np.hstack([c_d, d_d @ nr]), owners)
+    rhs = np.hstack([c_d, d_d @ nr])
+    y_solution, loops = _solve_algebraic_equations(d_d @ m, rhs, owners)
     y_x, y_r = y_solution[:, :n], y_solution[:, n:]
 
+    # 6. Итоговые матрицы всей схемы
     return LinearModel(
         a=a_d + b_d @ m @ y_x,
         b=b_d @ (m @ y_r + nr),
