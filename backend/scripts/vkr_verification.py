@@ -146,7 +146,12 @@ def verify(folder: Path) -> dict[str, list[dict]]:
             "ЛАЧХ: макс. |Δ|, дБ": f"{float(np.max(np.abs(mag - matlab['mag_db']))):.1e}",
             "ЛФЧХ: макс. |Δ|, °": f"{float(np.max(np.abs(phase + phase_shift - matlab['phase_deg']))):.1e}",
         })
-        curves[name] = (title, w, mag, phase + phase_shift, matlab["mag_db"], matlab["phase_deg"])
+        dense = np.geomspace(w[0], w[-1], 800)               # плотная сетка для линии программы
+        dense_response = frequency_response(model, dense)
+        dense_phase = np.degrees(np.unwrap(np.angle(dense_response)))
+        dense_phase += 360.0 * np.round((matlab["phase_deg"][0] - dense_phase[0]) / 360.0)
+        curves[name] = (title, dense, 20.0 * np.log10(np.abs(dense_response)), dense_phase, w,
+                        matlab["mag_db"], matlab["phase_deg"])
 
         # запасы устойчивости по разрезу контура
         if cut is not None:
@@ -200,11 +205,11 @@ def sweep(folder: Path) -> list[dict]:
 
 def plot_bode(curves: dict) -> None:
     for name in ("pi", "egsp"):
-        title, w, mag, phase, mag_m, phase_m = curves[name]
+        title, w, mag, phase, w_m, mag_m, phase_m = curves[name]
         figure, (top, bottom) = plt.subplots(2, 1, figsize=(7.5, 5.6), sharex=True)
         for axis, ours, theirs, label in ((top, mag, mag_m, "L, дБ"), (bottom, phase, phase_m, "φ, °")):
             axis.semilogx(w, ours, color="black", lw=1.8, label="Control Lab")
-            axis.semilogx(w, theirs, "o", color="black", mfc="white", ms=5, label="MATLAB (bode)")
+            axis.semilogx(w_m, theirs, "o", color="black", mfc="white", ms=5, label="MATLAB (bode)")
             axis.set_ylabel(label)
             axis.grid(True, which="both", color="0.85", lw=0.6)
         top.legend(frameon=False)
@@ -218,10 +223,9 @@ def plot_locus(ours: list[np.ndarray], theirs: list[np.ndarray]) -> None:
     figure, axis = plt.subplots(figsize=(6.5, 4.8))
     dense = sweep_poles(SweepRequest(diagram=Diagram.model_validate(third_order(1.0)), block_id="k", parameter="k",
                                      values=list(np.linspace(0.05, 12.0, 160))))
-    branch = np.array([[p["real"] + 1j * p["imag"] for p in sorted(
-        point.poles, key=lambda p: (p["imag"], p["real"]))] for point in dense.points])
-    for k in range(branch.shape[1]):
-        axis.plot(branch[:, k].real, branch[:, k].imag, color="black", lw=1.2)
+    for point in dense.points:                                    # путь полюсов при K от 0,05 до 12
+        poles = np.array([p["real"] + 1j * p["imag"] for p in point.poles])
+        axis.plot(poles.real, poles.imag, ".", color="black", ms=2)
     for value, points in zip(SWEEP_K, theirs, strict=True):
         axis.plot(points.real, points.imag, "o", color="black", mfc="white", ms=6)
         if value in (2.0, 6.0, 10.0):
