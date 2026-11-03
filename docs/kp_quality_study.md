@@ -1,6 +1,6 @@
 # Проверка модуля показателей качества
 
-_Сгенерировано `backend/scripts/kp_quality_study.py` · Python 3.13.16 · Linux-6.18.44-fc-v80-x86_64-with-glibc2.39._
+_Сгенерировано `backend/scripts/kp_quality_study.py` · Python 3.13.16 · Linux-6.18.44-fc-v230-x86_64-with-glibc2.39._
 Расчёт идёт через `simulate_request` — тот же путь, что и запрос `/simulate`; шаг сетки 0,001 с.
 
 ## 1. Звено 1-го порядка K/(Ts + 1), K = 2

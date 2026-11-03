@@ -1,6 +1,6 @@
 # Проверка модуля запасов устойчивости
 
-_Сгенерировано `backend/scripts/kp_margins_study.py` · Python 3.13.16 · Linux-6.18.44-fc-v114-x86_64-with-glibc2.39._
+_Сгенерировано `backend/scripts/kp_margins_study.py` · Python 3.13.16 · Linux-6.18.44-fc-v230-x86_64-with-glibc2.39._
 
 ## 1. Контур K/(s(s+1)(s+2))
 
